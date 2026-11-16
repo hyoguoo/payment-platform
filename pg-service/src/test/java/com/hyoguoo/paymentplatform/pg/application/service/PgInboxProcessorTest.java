@@ -169,7 +169,8 @@ class PgInboxProcessorTest {
         PgInbox inProgressInbox = PgInbox.of(
                 ORDER_ID, PgInboxStatus.IN_PROGRESS, 15000L, null, null, NOW, NOW);
         when(inboxRepository.selectInProgressForUpdateSkipLocked(INBOX_ID)).thenReturn(Optional.of(inProgressInbox));
-        GatewayOutcome handledInternally = new GatewayOutcome.HandledInternally("ALREADY_PROCESSED");
+        GatewayOutcome handledInternally = new GatewayOutcome.HandledInternally(
+                "ALREADY_PROCESSED", new DuplicateApprovalHandler.VendorQueryOutcome.Indeterminate());
         when(vendorCallService.invokeVendor(any())).thenReturn(handledInternally);
 
         // when

@@ -45,8 +45,9 @@ import org.springframework.context.ApplicationEventPublisher;
  *
  * <p>Spring 컨텍스트 없이 {@link PgInboxProcessor} + {@link PgVendorCallService} +
  * {@link DuplicateApprovalHandler} 를 Fake 저장소로 직접 wiring 한다. 멱등 모드 duplicate 흡수는
- * {@link PgVendorCallService#applyOutcome} 의 catch(PgGatewayDuplicateHandledException) →
- * {@code handleDuplicate} 가 {@link DuplicateApprovalHandler#handleDuplicateApproval} 을 직접
+ * {@link PgVendorCallService#invokeVendor} 의 catch(PgGatewayDuplicateHandledException) 가 TX 밖에서
+ * {@link DuplicateApprovalHandler#queryVendorStatus} 로 조회하고, {@link PgVendorCallService#applyOutcome} 의
+ * {@code handleDuplicate} 가 그 결과로 {@link DuplicateApprovalHandler#handleDuplicateApproval} 을
  * 호출하는 예외 경로 하나뿐이다 — production 도 동일하다.
  *
  * <p>단언 기준값: 최종 pg_inbox 상태 = APPROVED(승인 종결) 유지, storedStatusResult 의 amount 가

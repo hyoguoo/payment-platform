@@ -293,7 +293,7 @@ flowchart TD
 
     RES -->|"PgGatewayRetryableException<br/>5xx / timeout / IO"| RETRY["handleRetry"]
 
-    RES -->|"PgGatewayDuplicateHandledException<br/>'이미 처리됨' 멱등 응답"| DUP["DuplicateApprovalHandler<br/>vendor getStatus 재조회 -> 진짜 결과 확정"]
+    RES -->|"PgGatewayDuplicateHandledException<br/>'이미 처리됨' 멱등 응답"| DUP["DuplicateApprovalHandler<br/>TX 밖 vendor getStatus 재조회 -> TX_B에서 진짜 결과 확정"]
 
     RETRY --> RC{"RetryPolicy.shouldRetry attempt"}
     RC -->|"Yes attempt &lt; 4"| RETRY_OUT["insertRetryOutbox<br/>pg_outbox commands.confirm row INSERT<br/>+ availableAt = now + backoff<br/>+ incrementAttempt (pg_inbox, TX_B)<br/>+ 새 eventUuid (UUID.randomUUID)"]
@@ -306,7 +306,7 @@ flowchart TD
 ```
 
 핵심 포인트:
-- **`PgGatewayDuplicateHandledException`** 분기는 vendor 멱등성 응답 ("이미 처리됨") 을 흡수하는 안전장치. IN_PROGRESS retry 시 두 번째 호출이 멱등 응답 받을 때 자연스럽게 작동. `DuplicateApprovalHandler` 는 vendor `getStatus` 재조회 후 **금액을 먼저 대조**하고(불일치면 종결 여부와 무관하게 QUARANTINED), 일치할 때만 접수 기록의 종결 여부로 갈라진다 — 종결이면 보관 결과 재발행, 종결 전이면 조회 상태가 승인일 때만 조회 결과로 승인 종결하고 승인 미확인이면 상태를 바꾸지 않고 물러난다.
+- **`PgGatewayDuplicateHandledException`** 분기는 vendor 멱등성 응답 ("이미 처리됨") 을 흡수하는 안전장치. IN_PROGRESS retry 시 두 번째 호출이 멱등 응답 받을 때 자연스럽게 작동. 재조회는 `invokeVendor`(TX 밖)에서 `DuplicateApprovalHandler.queryVendorStatus` 로 끝내 커넥션을 쥐지 않는다(#167). `DuplicateApprovalHandler.handleDuplicateApproval` 은 TX_B 안에서 그 결과로 **금액을 먼저 대조**하고(불일치면 종결 여부와 무관하게 QUARANTINED), 일치할 때만 접수 기록의 종결 여부로 갈라진다 — 종결이면 보관 결과 재발행, 종결 전이면 조회 상태가 승인일 때만 조회 결과로 승인 종결하고 승인 미확인이면 상태를 바꾸지 않고 물러난다.
 - **새 eventUuid 발급** — retry 메시지마다 `UUID.randomUUID()` 로 새 발급. 리스너 진입 필터가 있던 시절 재시도를 통과시키기 위한 규약이었고, 필터 제거 후에도 payment 측 `payment_event_dedupe` 의 메시지 단위 키로 계속 쓰인다.
 - **`attempt` 한도/DLQ 작동** — 위 `RC` 분기의 `attempt` 는 `pg_inbox.attempt`(Flyway V5) 에서 `resolveAttempt(inbox)` 로 읽고, retry 분기에서 `incrementAttempt`(결과 반영 TX_B 의 `UPDATE attempt=attempt+1`) 로 누적된다 → 4 소진 시 `insertDlqOutbox`(attempt≥4) → DLQ → `PgDlqService` QUARANTINED 자동 격리. self-loop 즉시 워커와 좀비 폴링 동시 진입 시 over-count(조기 격리)는 수용 한계.
 

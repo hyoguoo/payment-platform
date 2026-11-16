@@ -3,6 +3,7 @@ package com.hyoguoo.paymentplatform.pg.integration;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -16,6 +17,7 @@ import com.hyoguoo.paymentplatform.pg.domain.PgInbox;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgInboxStatus;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgPaymentStatus;
 import com.hyoguoo.paymentplatform.pg.domain.enums.PgVendorType;
+import com.hyoguoo.paymentplatform.pg.exception.PgGatewayDuplicateHandledException;
 import com.hyoguoo.paymentplatform.pg.exception.PgGatewayRetryableException;
 import com.hyoguoo.paymentplatform.pg.infrastructure.gateway.fake.FakePgGatewayStrategy;
 import com.hyoguoo.paymentplatform.pg.infrastructure.repository.JpaPgInboxRepository;
@@ -42,6 +44,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -259,7 +262,8 @@ class PgDuplicateApprovalSettlementIntegrationTest {
                 .when(fakePgGatewayStrategy).getStatusByOrderId(orderId);
 
         // when — 뒤늦게 도착한 중복 승인 신호가 이미 종결된 기록을 다시 건드리려 시도한다
-        duplicateApprovalHandler.handleDuplicateApproval(orderId, BigDecimal.valueOf(AMOUNT), PgVendorType.TOSS);
+        duplicateApprovalHandler.handleDuplicateApproval(orderId, BigDecimal.valueOf(AMOUNT),
+                duplicateApprovalHandler.queryVendorStatus(orderId, PgVendorType.TOSS));
 
         // then — 전이 0건이라 발행 행이 없다
         assertThat(jpaPgOutboxRepository.findByKeyAndTopicInOrderByCreatedAtAsc(
@@ -316,8 +320,8 @@ class PgDuplicateApprovalSettlementIntegrationTest {
             ready.countDown();
             awaitQuietly(start);
             try {
-                duplicateApprovalHandler.handleDuplicateApproval(
-                        orderId, BigDecimal.valueOf(AMOUNT), PgVendorType.TOSS);
+                duplicateApprovalHandler.handleDuplicateApproval(orderId, BigDecimal.valueOf(AMOUNT),
+                        duplicateApprovalHandler.queryVendorStatus(orderId, PgVendorType.TOSS));
             } catch (Exception e) {
                 quarantineFailure.set(e);
             }
@@ -396,8 +400,8 @@ class PgDuplicateApprovalSettlementIntegrationTest {
                 // 부하와 무관하게 결정적으로 재현한다.
                 awaitWithTimeoutOrFail(approvalSettled, 5,
                         "승인 종결 스레드가 제한 시간 내 커밋을 완료하지 못함");
-                duplicateApprovalHandler.handleDuplicateApproval(
-                        orderId, BigDecimal.valueOf(AMOUNT), PgVendorType.TOSS);
+                duplicateApprovalHandler.handleDuplicateApproval(orderId, BigDecimal.valueOf(AMOUNT),
+                        duplicateApprovalHandler.queryVendorStatus(orderId, PgVendorType.TOSS));
             } catch (Exception e) {
                 indeterminateFailure.set(e);
             }
@@ -433,6 +437,43 @@ class PgDuplicateApprovalSettlementIntegrationTest {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("대기 중 인터럽트", e);
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 트랜잭션 경계 — 중복 승인 보정의 벤더 상태 조회는 DB 연결을 쥐지 않은 채 한다 (#167)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("중복 승인 응답 — 벤더 상태 조회는 트랜잭션이 없는 동안 하고, 조회 결과로 승인 종결·발행 1건")
+    void 중복승인_벤더상태조회는_트랜잭션_밖에서_하고_승인으로_종결된다() {
+        // given — 접수 기록 PENDING, 벤더는 "이미 처리된 결제"로 답하고 상태 조회는 승인 완료를 돌려준다
+        String orderId = "order-dup-tx-boundary-" + UUID.randomUUID();
+        String paymentKey = "pay-key-" + orderId;
+        Long inboxId = pgInboxRepository.insertPending(orderId, AMOUNT, "TOSS", paymentKey, null);
+
+        doThrow(PgGatewayDuplicateHandledException.of("ALREADY_PROCESSED"))
+                .when(fakePgGatewayStrategy).confirm(any());
+        AtomicReference<Boolean> transactionActiveDuringLookup = new AtomicReference<>();
+        doAnswer(invocation -> {
+            transactionActiveDuringLookup.set(TransactionSynchronizationManager.isActualTransactionActive());
+            return new PgStatusResult(paymentKey, orderId, PgPaymentStatus.DONE,
+                    BigDecimal.valueOf(AMOUNT), null, null, APPROVED_AT_RAW);
+        }).when(fakePgGatewayStrategy).getStatusByOrderId(orderId);
+
+        // when
+        pgInboxProcessUseCase.processPending(inboxId);
+
+        // then — 조회 순간 트랜잭션이 없어야 한다. 있으면 벤더 대기 동안 DB 연결을 쥐어 풀이 바닥날 수 있다
+        assertThat(transactionActiveDuringLookup.get())
+                .as("벤더 상태 조회는 트랜잭션 밖에서 해야 함")
+                .isFalse();
+        assertThat(pgInboxRepository.findByOrderId(orderId).orElseThrow().getStatus())
+                .as("조회 결과(승인 완료, 금액 일치)로 승인 종결돼야 함")
+                .isEqualTo(PgInboxStatus.APPROVED);
+        assertThat(jpaPgOutboxRepository.findByKeyAndTopicInOrderByCreatedAtAsc(
+                orderId, List.of(PgTopics.EVENTS_CONFIRMED)))
+                .as("발행 행이 정확히 1건이어야 함")
+                .hasSize(1);
     }
 
     /**

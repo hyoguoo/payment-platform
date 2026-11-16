@@ -557,7 +557,7 @@ pg-service listener 의 동기 TX 는 `PgInboxPendingService.insertPendingAndPub
 | `processInProgressZombie(inboxId)` | `WHERE id=? AND status=IN_PROGRESS FOR UPDATE SKIP LOCKED` | `PgInboxImmediateWorker` (IN_PROGRESS 재진입) + `PgInboxPollingWorker` (IN_PROGRESS 좀비) |
 
 - **TX_A** — `PENDING → IN_PROGRESS` (또는 IN_PROGRESS `updated_at` 갱신) 후 즉시 커밋 → lock 해제.
-- **벤더 HTTP** — `PgVendorCallService.invokeVendor(request)` → `GatewayOutcome` 반환. TX 밖, DB 자유 상태. VT 가 캐리어 양보.
+- **벤더 HTTP** — `PgVendorCallService.invokeVendor(request)` → `GatewayOutcome` 반환. TX 밖, DB 자유 상태. VT 가 캐리어 양보. 멱등 응답("이미 처리됨")이면 보정용 상태 조회(`DuplicateApprovalHandler.queryVendorStatus`)도 여기서 끝내 결과를 `HandledInternally` 에 담는다(#167).
 - **TX_B** — `PgVendorCallService.applyOutcome(outcome, request, attempt, now)` 안에서 5분기 처리 → `pg_inbox` UPDATE + `pg_outbox` INSERT + AFTER_COMMIT publishEvent → TX_B commit.
 
 ### 보정 경로 PENDING 우회 룰 (`DuplicateApprovalHandler`)

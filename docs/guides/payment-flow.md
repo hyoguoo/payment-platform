@@ -129,7 +129,7 @@ sequenceDiagram
     - **승인(2xx)** → `pg_inbox APPROVED` + `pg_outbox` `events.confirmed` APPROVED 적재
     - **확정 거절(4xx, `PgGatewayNonRetryableException`)** → `FAILED` + `events.confirmed` FAILED
     - **일시 오류(5xx/timeout, `PgGatewayRetryableException`)** → `handleRetry`: `shouldRetry(attempt)`면 같은 토픽 self-loop 재발행(지수 backoff) + `pg_inbox.attempt` 증가, 한도(4) 소진 시 DLQ. 시도횟수는 `pg_inbox.attempt`(Flyway V5)에 영속돼 한도 도달 시 DLQ→QUARANTINED 자동 격리가 작동한다(2026-06-25 도입)
-    - **멱등 응답(`PgGatewayDuplicateHandledException`)** → `DuplicateApprovalHandler`: vendor `getStatus` 재조회 후 **금액을 먼저 대조**(불일치면 QUARANTINED), 일치하면 접수 기록이 이미 끝났는지로 갈라진다 — 끝났으면 보관 결과 재발행, 아직 안 끝났으면 조회 결과가 승인일 때만 그 결과로 승인 종결하고 승인이 확인되지 않으면 아무것도 하지 않고 물러난다. 이 신호는 **예외 한 갈래**로만 온다 — 전략이 이벤트도 함께 발행해 핸들러가 한 응답에 두 번 돌던 구조는 제거됐다(그때는 같은 사건에 결과 발행이 2건 남았다)
+    - **멱등 응답(`PgGatewayDuplicateHandledException`)** → `DuplicateApprovalHandler`: DB 연결을 잡기 전에 vendor `getStatus` 를 재조회하고, 반영 트랜잭션에서 **금액을 먼저 대조**(불일치면 QUARANTINED), 일치하면 접수 기록이 이미 끝났는지로 갈라진다 — 끝났으면 보관 결과 재발행, 아직 안 끝났으면 조회 결과가 승인일 때만 그 결과로 승인 종결하고 승인이 확인되지 않으면 아무것도 하지 않고 물러난다. 이 신호는 **예외 한 갈래**로만 온다 — 전략이 이벤트도 함께 발행해 핸들러가 한 응답에 두 번 돌던 구조는 제거됐다(그때는 같은 사건에 결과 발행이 2건 남았다)
     - **겹침 거부(처리 중 재요청)** → 벤더가 아직 처리 중이라며 거부한 것이므로 시도 횟수도 재시도 명령도 건드리지 않고 물러난다. 원래 호출이 결과를 낸다
 21. **결과 되쏨** — pg outbox relay 가 **`payment.events.confirmed`** 발행 (`PgOutboxRelayService` → `PgEventPublisher`)
     - DLQ 경로 → `PaymentConfirmDlqConsumer` → `PgDlqService` 가 격리로 직행하지 않고 **`PgFinalConfirmationGate` 에 위임한다**(2026-08-14 배선). 벤더에 한 번 물어 승인이면 승인 종결, 취소·중단·만료면 실패 종결, 그 밖이면 사유를 붙여 격리한다 — 격리 사유는 조회 실패 / 벤더 미결론 / 부분 취소 / 금액 불일치 넷. 사람이 볼 일이 아닌 건은 여기서 자동으로 끝난다

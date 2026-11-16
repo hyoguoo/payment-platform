@@ -35,8 +35,8 @@ import org.springframework.stereotype.Service;
  *
  * <p>벤더 RuntimeException 시 TX_B 미진입 → pg_inbox IN_PROGRESS 잔존
  * → 좀비 폴링({@code PgInboxPollingWorker}) 이 {@link #processInProgressZombie} 로 회수.
- * ALREADY_PROCESSED 응답은 HandledInternally outcome 으로 변환되어
- * {@code applyOutcome} 의 5분기 안에서 {@code DuplicateApprovalHandler} 에 위임된다.
+ * ALREADY_PROCESSED 응답은 {@code invokeVendor}(TX 외부)에서 보정용 벤더 상태 조회까지 끝낸 HandledInternally
+ * outcome 으로 변환되고, {@code applyOutcome} 의 분기 안에서 그 조회 결과와 함께 {@code DuplicateApprovalHandler} 에 위임된다.
  *
  * <p>{@code pg_inbox} 의 {@code payment_key} / {@code vendor_type} 컬럼에서 직접 읽어
  * {@link PgConfirmRequest} 를 구성한다.

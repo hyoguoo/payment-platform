@@ -70,6 +70,12 @@
   - 구현 결과(2026-11-16): 상한 테스트 2개(inbox·outbox)는 "expected 2 but was 5", 리스너 동시성 테스트는 "expected 3 but was 1", 정체 작업·Error 테스트는 동작 부재로 실패하는 것을 확인한 뒤 구현. pg 단위 451, 통합 84 통과, 정적 분석 4종 통과. reviewer major 2(문서 정합성, 측정 증빙에 새 손잡이 누락)·minor 반영. risk-reviewer major 2(큐 적체로 폴링과 겹친 벤더 호출, Error로 워커 사망)는 위 추가 결정으로 고친 뒤 수정분 재검토에서 critical·major 없음. 재검토 minor(늦게 온 재시도 명령이 정체된 IN_PROGRESS 행과 겹치는 기존 갈래)는 TODOS PG-STALE-ROW-GUARD로 남김. worker-count 기본값은 아직 5(측정 전 임시값)라 측정으로 정하기 전에는 main에 병합하지 않는다
   - 측정 뒤 추가 결정(2026-11-16 개발자): worker 32·64 비교에서 상한 복원이 pg outbox 발행을 워커 1개로 묶는 회귀가 드러났다(160/s에서 약 145/s, EXPERIMENTS 2026-11-16). outbox worker-count 기본값을 1 → 8로 올린다(`application.yml`, `@Value` 기본값, quality·benchmark Compose 기본값, 손잡이 `QUALITY_PG_OUTBOX_WORKERS`). 채널이 넘친 작업을 폴링으로만 회수하는 느린 경로는 이번에 고치지 않고 TODOS PG-CHANNEL-OVERFLOW-DRAIN으로 남긴다. 다음 측정은 inbox 64 + outbox 8의 capacity 160/s 한 회차, 기준선보다 나으면 user-quality 100/s와 inbox 기본값 확정. outbox 8도 이 측정으로 확인하기 전까지는 임시값이라 main 병합 조건에 함께 건다
   - 2차 측정 뒤 결정(2026-11-16 개발자): inbox worker-count 기본값을 5(임시) → 64로 정한다(`application.yml`, `@Value` 기본값, quality·benchmark Compose 기본값). 근거는 capacity 160/s에서 32는 약 147/s로 미달, 64 + outbox 8은 부하 중 회복·채널 적체 0, user-quality 100/s 통과(EXPERIMENTS 2026-11-16 2차). 값이 측정한 조건과 같아 추가 측정은 하지 않는다. 실제 PG 동시 요청 한도는 TC-6에서 다룬다. outbox 8도 같은 2차 측정으로 확인해, 두 임시값에 걸었던 main 병합 조건은 풀렸다
+- [x] **T3.3 — 중복 승인 보정의 벤더 상태 조회를 트랜잭션 밖으로 분리** (tdd, 결제 위험 경로, #167)
+  - 근거: inbox 워커 64 반영 뒤 risk-reviewer major. "이미 처리된 결제" 응답의 보정 경로가 결과 반영 트랜잭션 안에서 벤더 상태를 조회해(최대 약 13초) DB 커넥션을 쥔다. 워커 64 > pg 커넥션 풀 30이라 벤더가 느릴 때 풀이 바닥날 수 있다. 모의 PG는 상태 조회에 지연이 없어 측정에 드러나지 않았다
+  - 선택한 변경(2026-11-16 개발자 결정): `PgVendorCallService.invokeVendor`(트랜잭션 없음)가 중복 응답을 받으면 `DuplicateApprovalHandler.queryVendorStatus`로 조회까지 끝내 결과를 `GatewayOutcome.HandledInternally`에 담는다. `handleDuplicateApproval`(트랜잭션)은 조회 결과로 반영만 한다. DLQ 경로(`PgFinalConfirmationGate`)와 같은 모양이다
+  - 대안: pg 커넥션 풀 확대(DB 부담이 늘고 원인이 남아 보류), 64로 두고 TODOS로 미루기(main 대비 나빠지지 않지만 64를 안전하게 쓰려면 먼저 풀어야 해 채택하지 않음)
+  - 지킬 것: 판정 불가·금액 대조·DB 기록 있음/없음·격리 분기 규칙은 그대로. DB 조회(findByOrderId)와 전이는 트랜잭션 안에 남긴다
+  - 구현 결과(2026-11-16): 새 통합 테스트(조회 순간 트랜잭션 활성 여부)가 "Expecting value to be false but was true"로 실패하는 것을 확인한 뒤 구현. pg 단위 454, 통합 85, 정적 분석 4종 통과. risk-reviewer 결함 없음(조회가 앞당겨져도 0건 가드·판정 불가 원자성 유지 확인, 제안 시나리오 중 "조회 중 실행 예외 전파"를 단위 테스트로 추가). reviewer minor 4(테스트 javadoc 위치, context·guide 문서, 코드 주석) 반영. 측정은 다시 하지 않는다(모의 PG 상태 조회에 지연이 없어 처리량이 같다)
 - [ ] **T4 — 개선 뒤 같은 조건으로 한계 재탐색**
   - 1차(2026-11-15, 결과 소비 동시성 3, 같은 JAR에 프로퍼티만 변경): 처리 용량 140/s 회복·160/s 미달(부하 중 141.6/s), 사용자 품질 100/s 통과. 다음 병목은 pg 명령 소비 → T3·T4 반복(#166: 명령 소비 동시성, 워커 동시 처리 상한, worker-count 측정)
   - 바꾼 요소 외 조건을 고정하고 T2.4의 두 시험을 다시 한다. 같은 rate의 전후 비교와 최고 지속 처리량의 변화를 함께 보고한다. 효과가 없거나 회귀면 변경을 고치거나 빼거나 보류 근거를 남긴다. 다음 병목이 있으면 T3·T4를 반복한다
@@ -80,6 +86,14 @@
 
 ## 진행 기록
 
+- 2026-11-16 단계적 개선 정리 (재개 지점): 이번 토픽의 처리량 개선은 측정 → 병목 지목 → 고침 → 재측정을 네 번 돌았다
+  | 단계 | 측정에서 본 병목 | 고친 것 | 결과(capacity 160/s) |
+  |---|---|---|---|
+  | 1 (#165) | payment 결과 소비 스레드 1개가 약 120/s에서 포화 | 결과 소비 동시성 1 → 3 | 부하 중 DONE 102.3 → 141.6/s, user-quality 100/s 통과 |
+  | 2 (#166) | pg 결제 명령 소비 1개에 잔량이 쌓임. 워커 동시 처리 상한이 없음 | 명령 소비 동시성 3, 워커 상한 복원 | 명령 소비 지연 0. 대신 상한 복원으로 outbox 발행이 1개로 묶여 129.5~130.6/s로 후퇴 |
+  | 3 (#166) | pg outbox 발행 워커 1개가 약 145/s에서 막힘, inbox 32는 약 147/s | outbox 워커 8, inbox 워커 64 | 부하 중 DONE 159.7/s, 입력 종료 뒤 0.3초에 해소, user-quality 100/s 사용자 완료 p95 2.1 → 1.1초 |
+  | 4 (#167) | 측정이 아닌 검토에서 발견: 워커 64 > DB 커넥션 30인데 중복 승인 보정이 트랜잭션 안에서 벤더 조회 | 상태 조회를 트랜잭션 밖으로 분리 | 처리량 변화 없음(모의 PG). 실 PG 지연에서 커넥션 풀 고갈 경로 제거 |
+  - 다음: T5 ship. 처리 용량 160/s 위와 초기 약 50초 적체 원인은 아직 재지 않았다
 - 2026-11-16 2차 측정 결과 (재개 지점): inbox 64 + outbox 8로 capacity 160/s 부하 중 회복(DONE 159.7/s, 정산 PASS, 채널 넘침 0), user-quality 100/s 품질 목표 4개 PASS(사용자 완료 p95 1.06초). 초기 약 50초 적체는 남는다. 다음: inbox worker-count 기본값 결정(후보 64) 뒤 코드·Compose·RUNBOOK 반영, 검증, 병합 판단. 자세한 수치는 EXPERIMENTS 2026-11-16 2차
 - 2026-11-16 outbox 워커 8 반영, 2차 측정 준비 완료 (재개 지점): outbox worker-count 기본값 1 → 8(`74309342`). 새 기본값 테스트는 "expected 8 but was 1" 실패를 확인한 뒤 구현. pg 단위 452, 통합 84 통과, 정적 분석 4종 통과. reviewer minor 3(문서 2건 반영, `@Value` 폴백 테스트는 yml이 늘 우선해 생략), risk-reviewer 결함 없음. 전 모듈 bootJar(pg JAR 안 yml이 `:8`), Testcontainers 컨테이너·볼륨 0. 측정은 아직 시작하지 않았다
   - 재개 명령: `bash live-drill/throughput-split-measurements-20261106/run-worker-rounds.sh`(기본 실행은 capacity-r160-w64-o8-a 한 회차, 약 20분). 기준선 capacity160-c3-a(141.6/s)보다 나으면 `run-worker-rounds.sh user-quality-r100-w64-o8-a`, 이어 inbox를 줄여 볼지 정한다(`user-quality-r100-w32-o8-a`)
