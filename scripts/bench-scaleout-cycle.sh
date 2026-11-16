@@ -61,7 +61,7 @@
 #   CONFIRMED_CONSUMER_CONCURRENCY — payment-service ConfirmedEventConsumer 리스너 동시성 (기본
 #                               1 — 코드 default 는 3이지만 기존 기준선과 비교하려고 1을 명시). payment.events.confirmed
 #                               파티션 수(3)까지만 늘리는 의미가 있다(Task 20 이 지목한 1순위 후보)
-#   PG_INBOX_WORKERS          — pg-service 벤더 confirm 호출 동시성 상한 (기본 5 — 코드 default.
+#   PG_INBOX_WORKERS          — pg-service 벤더 confirm 호출 동시성 상한 (기본 64 — 코드 default.
 #                               2026-11-15(#166)부터 실제 상한이라 그전 회차와 같은 값이라도 조건이 다르다)
 #   PG_OUTBOX_WORKERS         — pg-service 확정 결과 Kafka 릴레이 워커 수 (기본 8 — 코드 default.
 #                               #166 전에는 기본 1이어도 상한이 없었다)
@@ -191,7 +191,7 @@ RECONCILER_SCAN_MS="${RECONCILER_SCAN_MS:-15000}"
 HIKARI_MAX_POOL="${HIKARI_MAX_POOL:-80}"
 CONFIRMED_CONSUMER_CONCURRENCY="${CONFIRMED_CONSUMER_CONCURRENCY:-1}"
 PG_INSTANCES="${PG_INSTANCES:-1}"
-PG_INBOX_WORKERS="${PG_INBOX_WORKERS:-5}"
+PG_INBOX_WORKERS="${PG_INBOX_WORKERS:-64}"
 PG_OUTBOX_WORKERS="${PG_OUTBOX_WORKERS:-8}"
 PG_CONSUMER_CONCURRENCY="${PG_CONSUMER_CONCURRENCY:-1}"
 FAKE_FAIL_RATE="${FAKE_FAIL_RATE:-0}"

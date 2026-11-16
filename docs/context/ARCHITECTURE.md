@@ -181,7 +181,7 @@ src/main/resources/
 | `KafkaErrorHandlerConfig` | payment `infrastructure/config` | `DefaultErrorHandler` + `DeadLetterPublishingRecoverer` + `FixedBackOff`(1초 간격 5회). 재시도하지 않는 예외: `MessageConversionException`, `IllegalArgumentException`, `IllegalStateException`, `PaymentStatusException` |
 | `InboxReadyEventHandler` (AFTER_COMMIT) | pg `infrastructure/listener` | 커밋 직후 접수 작업을 inbox 채널에 넣는다 |
 | `PgInboxChannel` + `InboxJob` | pg `infrastructure/channel` | inbox 작업 큐(용량 1024). 작업에 OTel 컨텍스트를 함께 담아 Kafka 소비 스레드와 가상 스레드 워커 사이를 잇는다 |
-| `PgInboxImmediateWorker` | pg `infrastructure/scheduler` | inbox 가상 스레드 워커 5개. 채널에서 작업을 꺼내 컨텍스트를 복원하고 `PgInboxProcessUseCase`를 부른다(트랜잭션 → 벤더 호출 → 트랜잭션) |
+| `PgInboxImmediateWorker` | pg `infrastructure/scheduler` | inbox 가상 스레드 워커 N개(기본 64, 벤더 동시 호출 상한). 채널에서 작업을 꺼내 컨텍스트를 복원하고 `PgInboxProcessUseCase`를 부른다(트랜잭션 → 벤더 호출 → 트랜잭션) |
 | `PgInboxPollingWorker` (`@Scheduled`) | pg `infrastructure/scheduler` | inbox 정체 회수(5초 주기). PENDING은 접수 시각, IN_PROGRESS는 갱신 시각 기준 60초가 지난 행을 회수하고 `pg_inbox.stored_traceparent`로 부모 trace를 복원한다 |
 | `PgOutboxChannel` + `OutboxJob` | pg `infrastructure/channel` | outbox 발행 큐(용량 1024). 넣을 때 OTel 컨텍스트와 MDC를 캡처해 함께 담는다 |
 | `PgOutboxImmediateWorker` | pg `infrastructure/scheduler` | outbox 발행 워커. 생명주기 골격은 `AbstractImmediateWorker` 공통 base이고 Spring `DefaultLifecycleProcessor`가 시작·종료를 부른다. 워커가 작업을 직접 처리해 워커 수가 동시 처리 상한이다 |

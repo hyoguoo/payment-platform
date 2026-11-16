@@ -130,7 +130,8 @@ Kafka producer·consumer 지연, DB 지연·연결 끊김, payment·pg 프로세
 - 지금 백프레셔는 다운스트림 자원(Hikari 30, Kafka in-flight 5, Redis 단일 연결, 스케줄러 배치 50)에서 자연히 생긴다. `Semaphore`나 Resilience4j `Bulkhead` 같은 명시적 제한은 없다.
 - 외부 PG의 요청 한도를 넘거나, 다운스트림이 죽었을 때 타임아웃까지 가상 스레드가 쌓여 메모리를 누를 수 있다.
 - T4-D와 함께 Bulkhead를 넣거나 외부 PG 어댑터에 Semaphore를 둔다. 측정값으로 정한다.
-- pg inbox·outbox 워커는 2026-11-15(#166)부터 꺼낸 작업을 직접 처리해 worker-count가 동시 실행 상한이다. 그전에는 작업마다 새 가상 스레드를 만들어 상한이 없었다. outbox 워커 기본값은 같은 변경에서 1 → 8로 올렸다(1개는 160/s에서 약 145/s로 막힘).
+- pg inbox·outbox 워커는 2026-11-15(#166)부터 꺼낸 작업을 직접 처리해 worker-count가 동시 실행 상한이다. 그전에는 작업마다 새 가상 스레드를 만들어 상한이 없었다. outbox 워커 기본값은 같은 변경에서 1 → 8로 올렸다(1개는 160/s에서 약 145/s로 막힘). inbox 워커 기본값은 측정으로 64로 정했다.
+- 벤더 HTTP 클라이언트(`HttpOperatorImpl`, `SimpleClientHttpRequestFactory`)는 연결 수 상한이 없고 유휴 연결을 호스트당 5개(JDK 기본 `http.maxConnections`)만 재사용한다. 실 PG(HTTPS)에 동시 64건이 가면 대부분 연결·TLS 수립을 새로 한다. 실 PG 동시 요청 한도를 정할 때 HTTP 클라이언트 연결 풀과 상한을 함께 정한다. 측정은 모의 PG(HTTP 호출 없음)라 이 비용이 빠져 있다.
 
 ### TC-7 — `payment_outbox` 재시도 정책
 

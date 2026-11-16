@@ -108,8 +108,9 @@ pg:
     channel:
       capacity: 1024
       # 벤더 confirm 호출 동시성 상한 = 워커 수. 워커가 작업을 직접 처리한다(#166).
-      # 기본 5는 측정 전 임시값이다. 모의 PG 지연 100~300ms 기준 처리 상한이 약 17~50건/초라 측정으로 다시 정한다.
-      worker-count: ${PG_INBOX_CHANNEL_WORKER_COUNT:5}
+      # capacity 160/s 측정에서 32개는 약 147/s 로 미달, 64개는 채널 적체 없이 따라가 64로 둔다(EXPERIMENTS 2026-11-16).
+      # 실제 PG 의 동시 요청 한도가 이보다 낮으면 맞춰 줄인다(TODOS TC-6).
+      worker-count: ${PG_INBOX_CHANNEL_WORKER_COUNT:64}
   http:
     # connect-timeout: TCP 연결 수립 timeout. Toss/NicePay 벤더 측 LB 가 빠른 응답을 반환한다고 가정 — 3s 로 충분.
     # read-timeout: 벤더 confirm/getStatus 응답 대기. payment-service Feign cross-service(5s)보다 길게 잡는 이유 —

@@ -29,7 +29,7 @@ import org.springframework.stereotype.Component;
  *
  * <p>SmartLifecycle:
  * <ul>
- *   <li>start(): Virtual Thread 워커 N개(프로퍼티 pg.inbox.channel.worker-count) 기동.
+ *   <li>start(): Virtual Thread 워커 N개(기본 64, 프로퍼티 pg.inbox.channel.worker-count) 기동.
  *       워커가 작업을 직접 처리하므로 N 이 벤더 confirm 동시 호출 상한이다.</li>
  *   <li>stop(): running=false 후 처리 중 작업을 최대 10초 기다리고, 남은 워커만 interrupt.</li>
  *   <li>getPhase(): Integer.MAX_VALUE - 100. Kafka 리스너 레지스트리와 같은 phase 라 둘의 종료 순서는 정해져 있지 않다.</li>
@@ -65,7 +65,7 @@ public class PgInboxImmediateWorker extends AbstractImmediateWorker<InboxJob> {
             PgInboxChannel channel,
             PgInboxProcessUseCase processor,
             PgInboxRepository inboxRepository,
-            @Value("${pg.inbox.channel.worker-count:5}") int workerCount,
+            @Value("${pg.inbox.channel.worker-count:64}") int workerCount,
             @Value("${pg.scheduler.inbox-polling-worker.pending-timeout-ms:60000}") long pendingTimeoutMs,
             @Value("${pg.scheduler.inbox-polling-worker.in-progress-timeout-ms:60000}") long inProgressTimeoutMs,
             MeterRegistry meterRegistry,

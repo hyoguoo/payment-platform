@@ -27,7 +27,7 @@
 #   CONFIRMED_CONSUMER_CONCURRENCY — payment-service ConfirmedEventConsumer 리스너 동시성.
 #                         기본 1. 코드 default 는 3이지만 benchmark 는 기존 기준선과 비교하려고 1을 명시한다.
 #                         파티션 수(3)까지만 의미 있다.
-#   PG_INBOX_WORKERS  — pg-service inbox 채널(벤더 confirm 호출) 워커 수. 기본 5(코드 default).
+#   PG_INBOX_WORKERS  — pg-service inbox 채널(벤더 confirm 호출) 워커 수. 기본 64(코드 default).
 #   PG_OUTBOX_WORKERS — pg-service outbox 채널(확정 결과 Kafka 릴레이) 워커 수. 기본 8(코드 default).
 #
 # 주의:
@@ -104,7 +104,7 @@ services:
       # pg.inbox.channel.worker-count / pg.outbox.channel.worker-count — Spring relaxed binding
       # 으로 env 주입. 2026-11-15(#166)부터 워커가 작업을 직접 처리해 이 값이 실제 동시 처리 상한이다.
       # 그전 benchmark 회차는 상한 없이 돌았으므로 같은 값이라도 결과를 그대로 비교하지 않는다.
-      PG_INBOX_CHANNEL_WORKER_COUNT: "${PG_INBOX_WORKERS:-5}"
+      PG_INBOX_CHANNEL_WORKER_COUNT: "${PG_INBOX_WORKERS:-64}"
       PG_OUTBOX_CHANNEL_WORKER_COUNT: "${PG_OUTBOX_WORKERS:-8}"
       # spring.kafka.listener.concurrency — Spring relaxed binding 으로 env 주입. DLQ 리스너에 걸린다.
       # 결제 명령 리스너는 @KafkaListener 에 자기 동시성(pg.kafka.commands-confirm.consumer.concurrency,
