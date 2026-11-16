@@ -78,6 +78,11 @@
 
 ## 진행 기록
 
+- 2026-11-16 측정 준비 완료 (재개 지점): 개발자 요청으로 측정 직전까지만 진행했다. 실행 중인 컨테이너·볼륨·부하 없음.
+  - 끝난 것: 전 모듈 bootJar(payment·pg 새로 빌드, JAR 안에 `InboxJob.enqueuedAt`·결과 소비 기본 동시성 3 확인, pg 실행기 헬퍼 없음). Testcontainers 재사용 컨테이너 25개와 익명 볼륨을 라벨 `org.testcontainers=true`로 골라 지움(컨테이너·볼륨 0). quality Compose 조합에서 `QUALITY_PG_INBOX_WORKERS`·`QUALITY_PG_COMMAND_CONCURRENCY`·`QUALITY_CONFIRMED_CONCURRENCY`가 각각 `PG_INBOX_CHANNEL_WORKER_COUNT`, `PG_KAFKA_COMMANDS_CONFIRM_CONSUMER_CONCURRENCY`, payment `JAVA_TOOL_OPTIONS`로 들어가는 것을 `docker compose config`로 확인. 앱 JRE 태그는 기준선과 같은 `21.0.12.1_1`
+  - 측정 도구: `scripts/quality/evidence.py`가 pg 워커 지표(`pg_inbox_*`, `pg_outbox_*`, `pg_vendor_*`)를 `prometheus-pg_worker.json`으로 수집한다. 로컬 드라이버 `run-round-v4.py`(Git 제외)는 v3 측정 단계 그대로에 pg 손잡이 적용값 검사와 pg·pg-dlq 컨슈머 그룹 배정 기록만 더했다
+  - 재개 명령: `bash live-drill/throughput-split-measurements-20261106/run-worker-rounds.sh`(capacity 160/s, inbox worker 32·64 두 회차, 결과 소비·pg 명령 소비 동시성 3 고정, 냉각·부하·열 확인 후 차례로, 약 40분). 결과를 본 뒤 처리량을 유지하는 더 작은 값으로 `run-worker-rounds.sh user-quality-r100-w32-a`(또는 `-w64-a`). 비교 기준선은 capacity160-c3-a(141.6/s, 상한 없음, 명령 소비 1)와 user-quality100-c3-a
+  - 볼 지표: 부하 중 DONE 처리율·잔량, `payment.commands.confirm` 소비 지연, `pg_inbox_channel_queue_size`, `pg_inbox_stale_job_skipped_total`, `pg_vendor_concurrent_call_total`, pg hikari 대기, `pg_inbox_listener_tx_timeout_total`
 - 2026-11-15 채택: 결과 소비 동시성 3 채택과 pg 변경 묶음 진행을 개발자가 승인했다. 이슈를 따로 만들었다: #165(결과 소비 동시성 3, 완료), #166(pg 명령 소비 동시성과 워커 동시 처리 상한, 다음). 둘 다 #162의 하위 이슈다.
   - 로컬 Testcontainers 재사용 설정(`~/.testcontainers.properties`의 `testcontainers.reuse.enable=true`) 때문에 통합 테스트 뒤 컨테이너가 남는다. 다음 측정 전 `docker ps -aq`가 비어 있어야 `run-remaining-rounds.sh` 계열 드라이버가 시작하므로, 측정 전에 정리한다(라벨 `org.testcontainers=true`로 골라 지운다)
 - 2026-11-15 재개: 2026-11-06 중단 항목의 남은 측정 3회를 `run-remaining-rounds.sh`로 돌렸다(17:52 시작, 19:25 종료, 실패 없음). 회차 뒤 남은 컨테이너·볼륨 0. 호스트 화면은 외장 1개를 꺼 2개로 두었다. 결과와 판단은 [EXPERIMENTS](EXPERIMENTS.md)의 2026-11-15 항목. T2.4·T2를 완료했다.

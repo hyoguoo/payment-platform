@@ -104,7 +104,9 @@ def prometheus_range(directory, start_ms, end_ms):
         'hikari_timers': '{__name__=~"hikaricp_connections_(acquire|usage)_seconds_(count|sum|max)"}',
         'kafka_spring_timers': '{__name__=~"spring_kafka_(listener|template)_seconds_(count|sum|max)"}',
         'kafka_producer_client': '{__name__=~"kafka_producer_(txn_.*|request_latency_(avg|max)'
-                                 '|record_queue_time_(avg|max))"}'}
+                                 '|record_queue_time_(avg|max))"}',
+        # pg 즉시 처리 워커 지표(#166): 채널 적체, 정체 작업 건너뜀, 처리 실패, 겹친 벤더 호출, 리스너 tx 타임아웃.
+        'pg_worker': '{__name__=~"pg_(inbox|outbox|vendor)_.*"}'}
     try:
         catalog = get_json('http://localhost:9090/api/v1/label/__name__/values')
     except Exception as exc:

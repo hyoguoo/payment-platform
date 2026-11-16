@@ -7,9 +7,9 @@
 ## 진행 중
 
 ### PAYMENT-THROUGHPUT — 결제 처리량 한계 측정과 병목 개선
-- 규모·단계: 실험 · execute — T3 첫 병목 완료(2026-11-15, #165 결과 소비 동시성 기본값 3). 다음 반복은 pg 명령 소비 동시성과 워커 동시 처리 상한(#166)
+- 규모·단계: 실험 · execute — #165(결과 소비 동시성 3) 완료. #166(pg 명령 소비 동시성 3, 워커 동시 처리 상한 복원) 구현·검토·커밋 완료(`93b56f2d`), worker-count 측정 전. 개발자 요청으로 측정은 시작하지 않음(2026-11-16)
 - 추적: [#162](https://github.com/hyoguoo/payment-platform/issues/162)(하위 [#165](https://github.com/hyoguoo/payment-platform/issues/165) · [#166](https://github.com/hyoguoo/payment-platform/issues/166)) · 브랜치 `#162`
-- 다음: #166 — pg 명령 소비 동시성 1 → 3, 워커 동시 처리 상한 복원(tdd, 결제 위험 경로) → worker-count를 측정으로 결정 → 같은 조건 비교 측정. 측정 전 Testcontainers 재사용 컨테이너 정리. 상세는 DESIGN 진행 기록 2026-11-15. "중단됐던 작업 진행" 같은 재개 요청이면 이 토픽을 먼저 재개한다
+- 다음: 측정 준비 완료, 개발자 지시 후 시작 — `bash live-drill/throughput-split-measurements-20261106/run-worker-rounds.sh`(capacity 160/s, worker 32·64) → 작은 값으로 user-quality 100/s → 코드 기본값 결정. 기본값 5는 임시값이라 측정 전에는 main에 병합하지 않는다. 재개 지점은 DESIGN 진행 기록 2026-11-16
 - 막힘: 없음. 회차는 `live-drill/throughput-split-measurements-20261106/`의 v3 드라이버와 `finish-round.py`로 돌린다(EXPERIMENTS 고정 조건, RUNBOOK "회차마다 지킬 것")
 - 문서: [BRIEF](topics/PAYMENT-THROUGHPUT/BRIEF.md) · [DESIGN](topics/PAYMENT-THROUGHPUT/DESIGN.md) · [EXPERIMENTS](topics/PAYMENT-THROUGHPUT/EXPERIMENTS.md)
 
