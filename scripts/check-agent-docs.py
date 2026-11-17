@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.11"
+# ///
 """check-agent-docs.py — 지침·스킬·프로젝트 문서의 정합성 점검.
 
 판정 6종:
@@ -20,7 +23,7 @@
 기본 실행은 보고만 하고 항상 0을 반환한다. --strict는 판정 1·2·3·6에 문제가 있으면 1을 반환한다.
 판정 4·5는 정보 제공용이다.
 
-실행:  python3 scripts/check-agent-docs.py [--strict]
+실행:  uv run scripts/check-agent-docs.py [--strict]  (판정 6이 Python 3.11 이상인 sync-agent-configs.py를 호출한다)
 """
 import argparse
 import os

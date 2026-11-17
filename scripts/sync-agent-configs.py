@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""공통 역할 정의에서 Claude/Codex 설정 생성. --check는 변경 없이 불일치를 검출한다."""
+# /// script
+# requires-python = ">=3.11"
+# ///
+"""공통 역할 정의에서 Claude/Codex 설정 생성. --check는 변경 없이 불일치를 검출한다.
+
+실행:  uv run scripts/sync-agent-configs.py [--check]  (tomllib 때문에 Python 3.11 이상)
+"""
 
 import argparse
 import json

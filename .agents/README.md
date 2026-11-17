@@ -50,8 +50,9 @@ Claude Code와 Codex가 같은 지침, 스킬, 역할을 쓰도록 저장소를 
 값의 정본은 [roles.toml](roles.toml)이다. 프로젝트의 속도·비용·결제 위험을 보고 고른 값이며, 제공자가 달라도 같은 effort가
 같은 성능을 뜻하지는 않는다. 메인 모델은 사용자가 고른다.
 
-- 역할을 바꾸려면 `roles.toml`이나 `roles/*.md`를 고치고 `python3 scripts/sync-agent-configs.py`를 실행한다.
-  `--check`는 생성 파일이 정본과 다르거나 정본에 없는 생성 파일이 남아 있으면 실패한다. Python 3.11 이상이 필요하다.
+- 역할을 바꾸려면 `roles.toml`이나 `roles/*.md`를 고치고 `uv run scripts/sync-agent-configs.py`를 실행한다.
+  `--check`는 생성 파일이 정본과 다르거나 정본에 없는 생성 파일이 남아 있으면 실패한다. Python 3.11 이상이 필요하며,
+  `uv run`이 스크립트 머리의 요구 버전을 읽어 맞는 Python을 고른다. CI는 러너의 `python3`(3.11 이상)로 실행한다.
 - 역할 이름을 받지 않는 Codex 실행 도구에서는 `.codex/agents/<역할>.toml`의 지침을 전달하고 spawn 인자에 모델과
   reasoning effort를 지정한다.
 - 지정 모델을 쓸 수 없으면 사용 가능한 메인 모델로 같은 역할을 수행하고 바꾼 사실을 알린다. 사용량·인증·권한 문제가
@@ -64,8 +65,8 @@ Claude Code와 Codex가 같은 지침, 스킬, 역할을 쓰도록 저장소를 
 
 | 명령 | 확인하는 것 |
 |---|---|
-| `python3 scripts/check-agent-docs.py --strict` | 링크·경로 참조, 스킬·역할 frontmatter, 역할 동기화, context·smoke·quality 문서의 식별자. 인자 없이 실행하면 보고만 하고 항상 0으로 끝난다(CI) |
-| `python3 scripts/sync-agent-configs.py --check` | 역할 정본과 생성 파일 일치(CI) |
+| `uv run scripts/check-agent-docs.py --strict` | 링크·경로 참조, 스킬·역할 frontmatter, 역할 동기화, context·smoke·quality 문서의 식별자. 인자 없이 실행하면 보고만 하고 항상 0으로 끝난다(CI) |
+| `uv run scripts/sync-agent-configs.py --check` | 역할 정본과 생성 파일 일치(CI) |
 | `bash scripts/test-hooks.sh` | hook 판정(CI) |
 
 지침이나 스킬을 바꿨으면 대표 요청으로 동작도 확인한다. 오탈자 수정이 workflow를 시작하지 않는지, 리뷰만 요청하면 코드를

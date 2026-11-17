@@ -75,7 +75,7 @@ workflow 문서(BRIEF, DESIGN, STATE, 이슈, 브랜치, 아카이브)를 만들
 | risk-reviewer | 핵심 경로 변경의 불변식·장애 경로 검토, 설계 사전 점검 | [.agents/roles/risk-reviewer.md](.agents/roles/risk-reviewer.md) |
 
 역할 본문의 정본은 `.agents/roles/`, 모델·도구 설정의 정본은 `.agents/roles.toml`이다. `.claude/agents/`와 `.codex/agents/`는
-`python3 scripts/sync-agent-configs.py`가 만드는 파일이라 직접 고치지 않는다.
+`uv run scripts/sync-agent-configs.py`가 만드는 파일이라 직접 고치지 않는다.
 
 - 작은 수정은 메인이 직접 한다. 서브에이전트 호출을 개발자에게 매번 묻지 않는다.
 - 검토 배정은 review의 [검토 배정](.agents/skills/review/SKILL.md#검토-배정)을 따른다. 작은 작업은 위
@@ -93,8 +93,8 @@ workflow 문서(BRIEF, DESIGN, STATE, 이슈, 브랜치, 아카이브)를 만들
 - 검증 명령·순서·호출 조건은 [stack.md](.agents/profiles/stack.md#검증-순서)를 따른다.
   공통 빌드나 공유 코드를 바꾸면 영향받는 모듈로 넓힌다.
 - 상태 전이, 멱등성, 트랜잭션 경계, 외부 연동을 바꾸면 정상 경로와 함께 실패·재시도 경로도 확인한다.
-- 지침·스킬·context 문서를 바꾸면 `python3 scripts/check-agent-docs.py --strict`로, 역할을 바꾸면
-  `python3 scripts/sync-agent-configs.py` 뒤 `--check`로 확인한다. 문서만 바뀌면 Java 테스트는 생략한다.
+- 지침·스킬·context 문서를 바꾸면 `uv run scripts/check-agent-docs.py --strict`로, 역할을 바꾸면
+  `uv run scripts/sync-agent-configs.py` 뒤 `--check`로 확인한다. 문서만 바뀌면 Java 테스트는 생략한다.
 - 완료 보고에는 실행한 검사와 결과(명령, 실제 검사 범위, 실행·통과·실패 건수), 실행하지 못한 검사와 사유를
   구분해 적는다. 명령의 성공 코드만으로 검증 완료라 하지 않는다. 검사 대상 0건과 hook의 종료 허용은
   테스트 통과가 아니며, 남은 실패·미검증을 표시한다.
