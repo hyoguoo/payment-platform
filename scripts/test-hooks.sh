@@ -188,6 +188,8 @@ stop_case "종료검증: 테스트가 실패하면 막는다 1/3 (FS-4)" "$REPO"
 if grep -q "com.example.FixtureTest > 실패하는_케이스" "$TMPROOT/stop-stderr.txt"; then MSG=있음; else MSG=없음; fi
 record "종료검증: 차단 메시지에 실패 테스트 이름이 있다 (FS-4)" "있음" "$MSG"
 stop_case "종료검증: 같은 상태로는 두 번 막지 않는다 (FS-4)" "$REPO" "" s-block 0 1
+if jq -e '.systemMessage | test("실패") and test("통과")' "$TMPROOT/stop-stdout.txt" >/dev/null 2>&1; then MSG=있음; else MSG=없음; fi
+record "종료검증: 같은 실패 상태로 종료를 허용할 때 앞선 실패를 경고한다 (FS-4)" "있음" "$MSG"
 stop_case "종료검증: 차단은 주체별로 센다. implementer는 같은 상태에서도 한 번 막힌다" "$REPO" "implementer" s-block 2 2
 echo 'class Foo { int v = 2; }' > "$REPO/payment-service/src/Foo.java"
 stop_case "종료검증: 테스트가 실패하면 막는다 2/3" "$REPO" "" s-block 2 3
