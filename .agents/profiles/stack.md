@@ -44,6 +44,10 @@
 공유 빌드 설정(`build.gradle`, `config/`)이나 서비스 경계를 바꾸면 영향받는 모듈로 범위를 넓힌다.
 문서만 바뀌면 Java 테스트는 생략하고, 지침 문서는 `python3 scripts/check-agent-docs.py --strict`로 확인한다.
 
+검증 hook 구현을 수정하면 `bash .agents/hooks/tests/verify-on-stop-test.sh`로 hook 회귀 검사를 먼저 실행하고,
+변경한 셸 파일에 `bash -n <파일>`을 적용한다. 이 검사는 기존 커밋을 로컬 복제한 임시 저장소를 쓰며,
+원본 저장소에서 커밋하거나 Gradle을 실행하지 않는다. Java·빌드도 바뀌었으면 위 검사도 해당 조건에 따라 실행한다.
+
 ## 검증 hook 설정
 
 `.agents/hooks/`의 스크립트가 아래 블록만 읽는다. 한 줄에 `KEY=값` 하나, 값은 따옴표 없이 그대로 쓴다.

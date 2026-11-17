@@ -8,11 +8,11 @@
 # 등록: .claude/settings.json의 Stop과 SubagentStop(matcher: implementer). 파일을 고치지 않는 검토
 # 에이전트에는 걸지 않는다.
 #
-# 판정 순서 (hooks 설계는 .agents/profiles/stack.md의 "검증 hook" 절 참고)
+# 판정 순서 (동작 규칙은 AGENTS.md의 "검증 hook" 절, 설정은 stack.md의 "검증 hook 설정" 블록)
 #   1. 설정 블록이 없거나 검증 대상 변경이 없으면 통과
 #   2. 일시정지 표식이 지금 지문과 같으면 통과, 다르면 표식을 지우고 계속
-#   3. 같은 지문을 이미 판정했으면 통과 (같은 상태로 두 번 막지 않는다)
-#   4. 세션 차단 한도에 도달했으면 경고와 함께 통과
+#   3. 같은 지문을 이미 판정했으면 종료 허용. 앞선 실패이면 경고한다(같은 상태로 두 번 막지 않는다)
+#   4. 세션 차단 한도에 도달했으면 경고와 함께 종료 허용
 #   5. 잠금을 잡고 대상 모듈의 단위 테스트 실행. 실패하면 exit 2로 종료를 막는다
 
 set -uo pipefail
@@ -92,6 +92,7 @@ if grep -qx "PASS $FINGERPRINT" "$SESSION_FILE"; then
 fi
 if grep -qx "BLOCK $ACTOR $FINGERPRINT" "$SESSION_FILE"; then
     trace "skip(이미 차단 $FINGERPRINT)"
+    warn_user "이 변경 상태는 앞선 종료 검증에서 실패했고 이후 통과 기록이 없다. 같은 상태로 다시 막지 않아 종료를 허용했지만 검증 통과가 아니다."
     exit 0
 fi
 
