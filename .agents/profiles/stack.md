@@ -42,7 +42,11 @@
 | 재실행 | 위 명령에 `--rerun-tasks` | 외부 상태 때문에 캐시된 결과를 믿을 수 없을 때. 통합 테스트가 `UP-TO-DATE`로 건너뛰어졌을 때 | 에이전트 |
 
 공유 빌드 설정(`build.gradle`, `config/`)이나 서비스 경계를 바꾸면 영향받는 모듈로 범위를 넓힌다.
-문서만 바뀌면 Java 테스트는 생략하고, 지침 문서는 `python3 scripts/check-agent-docs.py --strict`로 확인한다.
+문서만 바뀌면 Java 테스트는 생략하고, 지침 문서는 `uv run scripts/check-agent-docs.py --strict`로 확인한다.
+
+검증 hook 구현이나 `verify-config` 블록을 수정하면 `bash scripts/test-hooks.sh`로 hook 회귀 검사를 먼저 실행하고,
+변경한 셸 파일에 `bash -n <파일>`을 적용한다. 종료 검증은 임시 git 저장소와 가짜 gradlew로 확인하므로 실제 빌드를
+돌리지 않는다(편집 린트 검사기 준비에만 한 번 빌드한다). Java·빌드도 바뀌었으면 위 검사도 해당 조건에 따라 실행한다.
 
 ## 검증 hook 설정
 

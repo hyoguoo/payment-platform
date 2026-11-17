@@ -1,4 +1,4 @@
-# 역할·모델 설정의 정본. 변경 후 python3 scripts/sync-agent-configs.py 실행.
+# 역할·모델 설정의 정본. 변경 후 uv run scripts/sync-agent-configs.py 실행.
 # 메인 모델은 사용자가 선택한다. 역할별 effort는 서로 다른 엔진에서 같은 성능을 뜻하지 않는다.
 
 [roles.implementer]
