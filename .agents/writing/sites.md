@@ -9,7 +9,7 @@
 | 토픽 폴더의 BRIEF, 이슈·PR 본문, HTML 변경 설명 | work-doc |
 | 토픽 폴더의 DESIGN·EXPERIMENTS, `docs/STATE.md`, `docs/context/` | 에이전트가 근거로 쓰는 기록. 정확성만 지킨다(work-doc 장르 첫머리) |
 | `docs/guides/` | wiki(사람용 결제 흐름 안내) |
-| `README.md` | 장르 없음(원문과 공통 규칙만 적용) |
+| `README.md` | general |
 | 위키(별도 저장소) | wiki. 위치는 `wiki-access` 스킬 |
 | 포트폴리오(blog 저장소) | portfolio. 위치는 `portfolio-access` 스킬 |
 
