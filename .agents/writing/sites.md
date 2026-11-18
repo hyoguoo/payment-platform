@@ -11,7 +11,8 @@
 | `docs/guides/` | wiki(사람용 결제 흐름 안내) |
 | `README.md` | general |
 | 위키(별도 저장소) | wiki. 위치는 `wiki-access` 스킬 |
-| 포트폴리오(blog 저장소) | portfolio. 위치는 `portfolio-access` 스킬 |
+| 포트폴리오(blog 저장소) | portfolio. 저장소는 현재 저장소 기준 `../../notes/blog`이고, 편집 위치는 그 저장소의 `.agents/writing/sites.md`에 있다 |
+| 블로그 포스팅(blog 저장소) | blog. 저장소는 현재 저장소 기준 `../../notes/blog`에 있다 |
 
 - 토픽 폴더와 HTML 변경 설명의 위치는 `workflow`, `explain-change-html` 스킬에 있다.
 - 이 저장소의 표기는 [glossary.md](glossary.md)를 따른다.

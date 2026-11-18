@@ -33,7 +33,7 @@ Claude Code와 Codex가 같은 지침, 스킬, 역할을 쓰도록 저장소를 
 | 변경 설명 HTML, 결과 보고서 | [explain-change-html](skills/explain-change-html/SKILL.md) |
 | context 문서 대조 | [context-update](skills/context-update/SKILL.md) |
 | 글 작성, 문서 검수 | 사용자 수준 `writing`, `writing-review` 스킬(agent-kits). 이 저장소 정보는 [.agents/writing/](writing/sites.md) |
-| 위키·포트폴리오 저장소 접근 | [wiki-access](skills/wiki-access/SKILL.md), [portfolio-access](skills/portfolio-access/SKILL.md) |
+| 위키 저장소 접근 | [wiki-access](skills/wiki-access/SKILL.md) |
 | 결제 실측·캡처·리포트 | [payment-live-drill](skills/payment-live-drill/SKILL.md) |
 
 스킬 설명(`description`)에는 언제 쓰는지만 짧게 쓰고, 절차와 참고 문서는 스킬 본문에 둔다. 새 스킬이 보이지 않으면 세션을 다시 시작한다.
