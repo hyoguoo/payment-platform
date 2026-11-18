@@ -25,6 +25,7 @@ GitHub 작업은 인증된 `gh`나 연결된 도구로 하고, 시작 전에 저
   - `<type>`은 커밋 type과 같은 목록에서 고른다(`feat`, `fix`, `refactor`, `docs`, `chore` 등).
   - `<요약>`은 영문 소문자 kebab-case 2~4단어다. workflow 토픽이면 토픽 이름을 줄여 쓴다.
   - 예: `feat/12-order-cancel`, `fix/order-quantity-validation`
+- 새 작업을 진행 중인 다른 작업 브랜치 위에 쌓지 않는다. 진행 중이던 브랜치는 새 작업의 PR이 병합된 뒤 main 위로 리베이스한다.
 - 미커밋 변경을 버리지 않는다. main에 직접 push하지 않고, 강제 push를 스스로 선택하지 않는다.
 
 ## 커밋

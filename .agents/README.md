@@ -49,6 +49,8 @@ Claude Code와 Codex가 같은 지침, 스킬, 역할을 쓰도록 저장소를 
 
 값의 정본은 [roles.toml](roles.toml)이다. 프로젝트의 속도·비용·결제 위험을 보고 고른 값이며, 제공자가 달라도 같은 effort가
 같은 성능을 뜻하지는 않는다. 메인 모델은 사용자가 고른다.
+고르는 기준은 빈도가 낮고 영향이 큰 자리(risk-reviewer)에 고성능 모델을, 빈도가 높은 자리(implementer)에 낮은 모델을 두는 것이다.
+사용 한도가 빨리 줄면 모델보다 effort를 먼저 낮춘다.
 
 - 역할을 바꾸려면 `roles.toml`이나 `roles/*.md`를 고치고 `uv run scripts/sync-agent-configs.py`를 실행한다.
   `--check`는 생성 파일이 정본과 다르거나 정본에 없는 생성 파일이 남아 있으면 실패한다. Python 3.11 이상이 필요하며,

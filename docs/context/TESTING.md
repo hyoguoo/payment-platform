@@ -96,6 +96,12 @@ payment-service 통합테스트는 스키마 생성 방식이 둘로 갈린다:
 
 DB명 분리는 스키마 관리 방식 경합을 차단한다. flyway-on 테스트가 마이그레이션으로 부팅되는 사실 자체가 마이그레이션 회귀 게이트 역할도 겸한다.
 
+## 통합 테스트 안정성
+
+- 통합 테스트가 처음 실행될 때, 컨슈머 파티션이 할당되기 전에 메시지를 기다리다 실패할 수 있다. setUp에서 Awaitility로 리스너 컨테이너마다 할당된 파티션이 1개 이상이 될 때까지 기다린 뒤 시나리오를 시작한다(`PaymentEosIntegrationTest`).
+- spring-kafka의 할당 대기 유틸(waitForAssignment)은 파티션 수가 정확히 같아야 통과해서 쓰지 않는다.
+- jacoco나 CI 연결을 바꿔 CI에서 통합 테스트가 처음 돌게 되는 변경은 이 안정성을 함께 점검한다.
+
 ## Contract test 패턴
 
 cross-service HTTP 의 4xx / 5xx → 도메인 예외 매핑은 **2-layer** 로 검증한다 — Feign `ErrorDecoder` 가 응답 → 예외 변환을 책임지고, `*HttpAdapter` 는 transport-level 변환만 책임진다.
@@ -177,6 +183,11 @@ Lua 는 실제 Redis 가 있어야 검증되므로 이 테스트들은 모두 �
 **통합테스트 정합성 보호**: 통합 경로로만 커버되는 결제 정합성(EOS commit/abort, dedupe, 보상 등)은 커버리지 게이트가 아니라 **CI `integration-test`의 모든 shard 통과(pass/fail)** 로 보호한다. payment는 3개, pg는 2개 shard이며 product/user는 1개다(`.github/workflows/ci.yml`). 통합테스트가 깨지면 해당 shard job이 실패한다(branch protection required checks 전제).
 
 **커버리지 게이트**: `jacocoTestCoverageVerification` 에 LINE `minimum` 을 둔다(element=`BUNDLE` — 테스트 없는 관리 클래스가 전체를 차단하지 않도록 번들 합산). 값은 단위 실측에서 안전마진(~3%p)을 뺀 값이다(ext `jacoco.lineCoverageMinimum`: payment 0.86 / pg 0.93 / product 0.97 / user 0.97). gateway·eureka 는 값을 두지 않아 0(기본값)이다 — 라우팅/디스커버리 전용이라 측정 대상 클래스가 없다.
+
+## SpotBugs가 테스트 코드에서 잡는 null 역참조
+
+테스트 코드의 NP_NULL 경고는 `Objects.requireNonNull`로 막히지 않는다. SpotBugs가 이 호출을 null 검사로 인식하지 않기 때문이다.
+역참조 앞에 `assertThat(x).isNotNull()`이나 명시적인 `if (x == null) throw`를 둔다.
 
 ## TDD 흐름
 
