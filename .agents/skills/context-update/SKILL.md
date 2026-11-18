@@ -32,7 +32,7 @@ description: payment-platform의 docs/context 문서를 현재 코드와 대조�
 - 다이어그램은 노드와 화살표만 실제와 맞추고 배치는 되도록 그대로 둔다.
 - 문서 머리에 갱신 날짜나 갱신 이력을 쓰지 않는다. 이력은 Git과 archive가 가진다.
 - 해결된 우려나 할 일은 [docs/TODOS.md](../../../docs/TODOS.md)에서 지운다. 일부만 해결됐으면 해결된 문장만 지우고 남은 한계는 둔다.
-- 사람이 읽는 안내 문서(`docs/guides/`)는 결제 흐름이 바뀌었을 때 함께 고친다. 작성 기준은 [writing](../writing/SKILL.md)이다.
+- 사람이 읽는 안내 문서(`docs/guides/`)는 결제 흐름이 바뀌었을 때 함께 고친다. 작성 기준은 사용자 수준 `writing` 스킬의 wiki 장르다.
 
 ## 4. 보고
 

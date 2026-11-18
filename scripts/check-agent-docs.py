@@ -101,7 +101,7 @@ CONFIG_CORPUS_SUFFIXES = {
     ".gradle", ".lua", ".sql", ".xml", ".env",
 }
 
-# 판정 4: Mermaid 노드·엣지 라벨 금지 문자 (writing 스킬 style-guide 8.5절 중 이 스크립트가 판정하는 부분집합)
+# 판정 4: Mermaid 노드·엣지 라벨 금지 문자 (사용자 수준 writing 스킬 core 8절의 Mermaid 규칙 중 이 스크립트가 판정하는 부분집합)
 MERMAID_FORBIDDEN_CHARS = {
     "{": "중괄호",
     "}": "중괄호",

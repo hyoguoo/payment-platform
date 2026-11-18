@@ -10,7 +10,7 @@ Claude Code와 Codex가 같은 지침, 스킬, 역할을 쓰도록 저장소를 
 | `AGENTS.md` | 프로젝트 지침 정본. Codex가 자동으로 읽는다 | 예 |
 | `CLAUDE.md` | `@AGENTS.md`를 가져오기만 한다. Claude Code가 어떤 설정에서도 AGENTS.md를 읽게 한다 | 아니오 |
 | `.agents/profiles/` | `stack.md`(버전, 검증 명령, hook 설정, 코드 규칙), `risk.md`(불변식, 핵심 경로) | 예 |
-| `.agents/conventions/` | Git, 테스트 관점, 작성 기준 | 예 |
+| `.agents/conventions/` | Git, 테스트 관점 | 예 |
 | `.agents/templates/` | 토픽 문서 템플릿(BRIEF, DESIGN, EXPERIMENTS) | 예 |
 | `.agents/skills/` | 스킬 정본. 아래 표 | 예 |
 | `.agents/roles/`, `.agents/roles.toml` | 역할 본문과 모델·도구 설정의 정본 | 예 |
@@ -32,7 +32,7 @@ Claude Code와 Codex가 같은 지침, 스킬, 역할을 쓰도록 저장소를 
 | 코드 리뷰 | [review](skills/review/SKILL.md) |
 | 변경 설명 HTML, 결과 보고서 | [explain-change-html](skills/explain-change-html/SKILL.md) |
 | context 문서 대조 | [context-update](skills/context-update/SKILL.md) |
-| 위키·포스팅 작성, 문서 검수 | [writing](skills/writing/SKILL.md), [doc-review](skills/doc-review/SKILL.md) |
+| 글 작성, 문서 검수 | 사용자 수준 `writing`, `writing-review` 스킬(agent-kits). 이 저장소 정보는 [.agents/writing/](writing/sites.md) |
 | 위키·포트폴리오 저장소 접근 | [wiki-access](skills/wiki-access/SKILL.md), [portfolio-access](skills/portfolio-access/SKILL.md) |
 | 결제 실측·캡처·리포트 | [payment-live-drill](skills/payment-live-drill/SKILL.md) |
 

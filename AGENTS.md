@@ -11,7 +11,7 @@ Claude Code와 Codex가 이 지침과 `.agents/`의 스킬·역할을 함께 쓴
 
 - 한국어로 간결하게 보고한다. 태스크 ID를 말할 때는 내용을 함께 적는다. 비교와 흐름은 표·다이어그램으로 보여 준다.
   보고가 한 화면을 크게 넘으면 문서로 남긴다(discuss 중이면 BRIEF, 아니면 남길지 묻는다).
-  사람이 읽는 문서는 [문서 작성 기준](.agents/conventions/writing.md)을 따른다.
+  사람이 읽는 문서는 사용자 수준 `writing` 스킬(agent-kits)을 따른다. 이 저장소의 글 위치와 용어는 [.agents/writing/](.agents/writing/sites.md)에 있다.
 - 현재 동작의 근거는 실제 코드와 빌드 설정이다.
 - 새로 만들기 전에 이미 있는 기능·유틸·지난 결정([docs/archive](docs/archive/README.md))을 찾는다.
   요구에 없는 추상화, 설정값, 확장 지점을 만들지 않는다. "나중에 필요할 수 있다"는 근거가 되지 않는다.
@@ -135,8 +135,7 @@ workflow 문서(BRIEF, DESIGN, STATE, 이슈, 브랜치, 아카이브)를 만들
 | 지난 작업과 결정 | [docs/archive/README.md](docs/archive/README.md) |
 | Git 규칙(이슈, 브랜치, 커밋, PR) | [.agents/conventions/git.md](.agents/conventions/git.md) |
 | 테스트 목록 작성(예외 케이스 관점) | [.agents/conventions/testing.md](.agents/conventions/testing.md) |
-| 사람이 읽는 문서 작성(브리핑, 보고서, PR 본문) | [.agents/conventions/writing.md](.agents/conventions/writing.md) |
-| 위키·포스팅·README 작성 | [writing 스킬](.agents/skills/writing/SKILL.md) |
+| 사람이 읽는 문서 작성(브리핑, 보고서, PR 본문, 위키, 포스팅, README) | 사용자 수준 `writing` 스킬(agent-kits). 저장소 정보는 [.agents/writing/](.agents/writing/sites.md) |
 | 사람용 결제 흐름 안내 | [docs/guides/](docs/guides/) |
 | 스모크·트레이스·알람 확인 | [docs/smoke/](docs/smoke/) |
 | 결제 품질·처리량 측정 | [docs/quality/README.md](docs/quality/README.md) |
