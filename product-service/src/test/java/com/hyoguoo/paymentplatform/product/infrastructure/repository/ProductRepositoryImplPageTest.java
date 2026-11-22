@@ -138,18 +138,10 @@ class ProductRepositoryImplPageTest {
 
     private Long saveProductWithStock(String name, int quantity) {
         ProductEntity savedProduct = jpaProductRepository.save(
-                ProductEntity.builder()
-                        .name(name)
-                        .price(BigDecimal.valueOf(1000))
-                        .description("설명")
-                        .sellerId(1L)
-                        .build()
+                new ProductEntity(name, BigDecimal.valueOf(1000), "설명", 1L)
         );
         jpaStockRepository.save(
-                StockEntity.builder()
-                        .productId(savedProduct.getId())
-                        .quantity(quantity)
-                        .build()
+                new StockEntity(savedProduct.getId(), quantity)
         );
         return savedProduct.getId();
     }

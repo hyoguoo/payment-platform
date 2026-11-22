@@ -284,13 +284,19 @@ implementer 후보: T6(hook·stack.md), T7(CI). 쓰기 범위가 product-service
     - `StockCommitUseCase.commit`은 처리 순서, `@Transactional`, 예외 타입(`IllegalStateException`, `ProductStockException`)이 그대로다. `eventUUID`는 `String?`(질문 8-A), `DEDUPE_TTL`은 자바 컨슈머가 읽어 `@JvmField`. 파라미터 6개라 detekt `LongParameterList`에 걸려, 기존 계약이라는 이유로 억제했다
     - SpotBugs: 자바 테스트 `FakeStockRepository.findByProductId`가 코틀린 포트의 `@Nullable`을 물려받아 `NP_PARAMETER_MUST_BE_NONNULL_BUT_MARKED_AS_NULLABLE`가 났다. 판정 1 때문에 Fake를 고치지 않고 `spotbugs-exclude-test.xml`에 이 클래스·메서드·패턴만 임시 제외했다. T12에서 지운다
     - 검사: `test` 70건, `integrationTest` 41건, `ktlintCheck`, `detekt`, `checkstyleMain`·`checkstyleTest`, `spotbugsMain`·`spotbugsTest`, `jacocoTestCoverageVerification` 통과. 공유 파일 `spotbugs-exclude-test.xml`은 product 클래스 하나만 지정해 다른 모듈 영향이 없지만, ship에서 다른 5개 모듈 `spotbugsTest`를 함께 돌린다
-- [ ] **T10: 영속성(엔티티·저장소·중복 판정 저장소)을 코틀린으로**
+- [x] **T10: 영속성(엔티티·저장소·중복 판정 저장소)을 코틀린으로**
   - 변경 위치: `product/infrastructure/entity/*`, `product/infrastructure/repository/*`, `product/infrastructure/idempotency/*`
   - 의존: T9
   - 완료 기준: 엔티티는 일반 class, 스키마 검증(`ddl-auto=validate`) 통과, `INSERT IGNORE`·만료 행 삭제 SQL 그대로 (R5, R6, D12, FS-3, FS-12)
   - 검증: T8과 같음
   - tdd: false | risk: true | 담당: 메인
-  - 결과:
+  - 결과: `ProductEntity`, `StockEntity`, `JpaProductRepository`, `JpaStockRepository`, `ProductRepositoryImpl`, `StockRepositoryImpl`, `JdbcEventDedupeStore`를 코틀린으로 옮겼다. SQL 문자열은 그대로다
+    - 엔티티: 일반 class, 컬럼은 생성자 파라미터, `ProductEntity.id`(IDENTITY)와 읽기 전용 시각 컬럼은 `var … protected set`. `StockEntity.productId`는 non-null `Long`이라 Spring Data가 "0이면 새 엔티티"로 판단하는데, 키가 항상 0이 아니라 `save`가 이관 전처럼 merge로 동작한다. 통합 테스트의 `ddl-auto=validate` 통과
+    - null 처리: Spring Data가 패키지 전체 `@NonNullApi`라 `-Xjsr305=strict`에서 `findById`에 nullable을 넘길 수 없다. HTTP 재고 차감에서만 null이 올 수 있어 `requireNotNull`(IllegalArgumentException)로 실패시킨다. 이관 전에도 `findById(null)`이 IllegalArgumentException 계열로 거부되어 500과 롤백이었다(`decrease_nullProductId_rollsBack` 통과). Kafka 경로는 이 지점에 null이 오지 않는다
+    - `JdbcTemplate.update`에는 `PreparedStatementSetter { … }`를 명시했다. 코틀린 람다를 그대로 넘기면 `update(String, vararg Any?)`가 골라질 수 있다
+    - 처음에는 공유 UTC `Calendar`를 호출마다 새로 만들게 썼다가 되돌렸다. 스레드 안전 문제일 수 있지만 이관 전 동작을 바꾸는 일이라 TODOS `DEDUPE-SHARED-CALENDAR`로 남겼다
+    - 테스트 변경: `ProductRepositoryImplPageTest`의 엔티티 빌더 2곳을 생성자로. 그중 `new StockEntity(savedProduct.getId(), …)`가 SpotBugs `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE`에 걸려 이 메서드만 임시 제외(T12에서 지움)
+    - 검사: `test` 70건, `integrationTest` 41건, `ktlintCheck`, `detekt`, `checkstyleMain`·`checkstyleTest`, `spotbugsMain`·`spotbugsTest`, `jacocoTestCoverageVerification` 통과
 - [ ] **T11: 메시징·설정·스케줄러·메트릭·애플리케이션 진입점을 코틀린으로, Lombok 제거**
   - 변경 위치: `product/infrastructure/{messaging,config,scheduler,metrics}/**`, `ProductServiceApplication`, `product-service/build.gradle.kts`(Lombok 제외), `config/spotbugs/spotbugs-exclude*.xml`
   - 의존: T10
@@ -301,7 +307,7 @@ implementer 후보: T6(hook·stack.md), T7(CI). 쓰기 범위가 product-service
 - [ ] **T12: 테스트를 코틀린(MockK·springmockk)으로**
   - 변경 위치: `product-service/src/test/java/**` → `src/test/kotlin/**`
   - 의존: T11
-  - 완료 기준: 테스트 클래스·메서드 수와 시나리오가 이관 전과 같다. `src/test/java`가 빈다. 스키마 대조 테스트는 `primaryConstructor.parameters` 순서로 검사한다. T9에서 넣은 `spotbugs-exclude-test.xml`의 `FakeStockRepository` 임시 제외를 지운다 (R2, m2)
+  - 완료 기준: 테스트 클래스·메서드 수와 시나리오가 이관 전과 같다. `src/test/java`가 빈다. 스키마 대조 테스트는 `primaryConstructor.parameters` 순서로 검사한다. T9·T10에서 넣은 `spotbugs-exclude-test.xml`의 임시 제외 2건(`FakeStockRepository`, `ProductRepositoryImplPageTest`)을 지운다 (R2, m2)
   - 검증: `./gradlew :product-service:test :product-service:integrationTest` 실행 건수가 T11 뒤와 같음, `ktlintCheck`, `detekt`, `spotbugsTest`
   - tdd: false | risk: false | 담당: 메인
   - 결과:

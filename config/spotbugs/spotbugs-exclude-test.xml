@@ -32,4 +32,15 @@
         <Method name="findByProductId"/>
     </Match>
 
+    <!--
+        product-service 코틀린 이관 중 임시 제외. 코틀린 ProductEntity.id(Long?, 저장 전에는 비어 있음)를 저장 직후
+        읽어 StockEntity 생성자(Long)로 넘기는 자바 테스트 픽스처 줄이 지적된다. 저장 뒤라 id 는 항상 있다.
+        이 테스트를 코틀린으로 옮기면 이 항목을 지운다(docs/topics/KOTLIN-PILOT-PRODUCT/DESIGN.md T12).
+    -->
+    <Match>
+        <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE"/>
+        <Class name="com.hyoguoo.paymentplatform.product.infrastructure.repository.ProductRepositoryImplPageTest"/>
+        <Method name="saveProductWithStock"/>
+    </Match>
+
 </FindBugsFilter>
