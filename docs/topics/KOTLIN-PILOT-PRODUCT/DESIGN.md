@@ -273,13 +273,17 @@ implementer 후보: T6(hook·stack.md), T7(CI). 쓰기 범위가 product-service
     - 판정 1 예외(개발자 결정, 2026-11-23): 코틀린 non-null `Long`이 자바에서 원시 `long`이 되어 `getId().equals(y)` 형태 단언 3줄이 컴파일되지 않았다. `== y`로만 바꿨다(`StockCommandUseCaseTest` 2줄, `ProductRepositoryImplPageTest` 1줄). 그 밖의 자바 테스트 변경은 모두 빌더 → 생성자 줄임을 staged diff로 확인
     - `StockCommandUseCase`를 당긴 이유: 코틀린 `Int?` 접근자에 `@Nullable` 표기가 붙자 SpotBugs가 자바 코드의 언박싱을 `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE`로 잡았고, `Objects.requireNonNull`로 감싸도 계속 잡았다. 곧 지울 자바 코드를 SpotBugs에 맞추는 대신 코틀린으로 옮기고 `!!`로 같은 NPE(500, 롤백)를 유지했다
     - 검사: `test` 70건, `integrationTest` 41건(HTTP 계약 17건 포함, 응답 본문 문자열 비교 그대로 통과), `ktlintCheck`, `detekt`, `checkstyleMain`·`checkstyleTest`, `spotbugsMain`·`spotbugsTest`, `jacocoTestCoverageVerification` 통과
-- [ ] **T9: 유스케이스·포트·컨트롤러를 코틀린으로** (`StockCommandUseCase`는 T8에서 옮김)
+- [x] **T9: 유스케이스·포트·컨트롤러를 코틀린으로** (`StockCommandUseCase`는 T8에서 옮김)
   - 변경 위치: `product/application/port/**`, `product/application/usecase/*`, `product/presentation/**`
   - 의존: T8
   - 완료 기준: `@Transactional` 경계, 처리 순서, 예외 타입이 같다. null 처리에 `requireNotNull`·`?: return`을 쓰지 않는다 (R3, R4, R5, D10, FS-1~3)
   - 검증: T8과 같음
   - tdd: false | risk: true | 담당: 메인
-  - 결과:
+  - 결과: 포트 5개(`EventDedupeStore`, `ProductRepository`, `StockRepository`, `ProductQueryService`, `StockCommandService`), `ProductQueryUseCase`, `StockCommitUseCase`, `ProductController`를 코틀린으로 옮겼다. 테스트는 한 줄도 바꾸지 않았다
+    - 포트 시그니처는 아직 자바인 구현체와 테스트 Fake가 그대로 구현하도록 `Optional` 반환과 `Long?` 파라미터를 유지했다(non-null `Long`이면 자바에서 `long`이 되어 기존 구현이 오버라이드에 실패한다). 코틀린다운 nullable 반환으로 바꾸는 일은 T13에서 한다
+    - `StockCommitUseCase.commit`은 처리 순서, `@Transactional`, 예외 타입(`IllegalStateException`, `ProductStockException`)이 그대로다. `eventUUID`는 `String?`(질문 8-A), `DEDUPE_TTL`은 자바 컨슈머가 읽어 `@JvmField`. 파라미터 6개라 detekt `LongParameterList`에 걸려, 기존 계약이라는 이유로 억제했다
+    - SpotBugs: 자바 테스트 `FakeStockRepository.findByProductId`가 코틀린 포트의 `@Nullable`을 물려받아 `NP_PARAMETER_MUST_BE_NONNULL_BUT_MARKED_AS_NULLABLE`가 났다. 판정 1 때문에 Fake를 고치지 않고 `spotbugs-exclude-test.xml`에 이 클래스·메서드·패턴만 임시 제외했다. T12에서 지운다
+    - 검사: `test` 70건, `integrationTest` 41건, `ktlintCheck`, `detekt`, `checkstyleMain`·`checkstyleTest`, `spotbugsMain`·`spotbugsTest`, `jacocoTestCoverageVerification` 통과. 공유 파일 `spotbugs-exclude-test.xml`은 product 클래스 하나만 지정해 다른 모듈 영향이 없지만, ship에서 다른 5개 모듈 `spotbugsTest`를 함께 돌린다
 - [ ] **T10: 영속성(엔티티·저장소·중복 판정 저장소)을 코틀린으로**
   - 변경 위치: `product/infrastructure/entity/*`, `product/infrastructure/repository/*`, `product/infrastructure/idempotency/*`
   - 의존: T9
@@ -297,7 +301,7 @@ implementer 후보: T6(hook·stack.md), T7(CI). 쓰기 범위가 product-service
 - [ ] **T12: 테스트를 코틀린(MockK·springmockk)으로**
   - 변경 위치: `product-service/src/test/java/**` → `src/test/kotlin/**`
   - 의존: T11
-  - 완료 기준: 테스트 클래스·메서드 수와 시나리오가 이관 전과 같다. `src/test/java`가 빈다. 스키마 대조 테스트는 `primaryConstructor.parameters` 순서로 검사한다 (R2, m2)
+  - 완료 기준: 테스트 클래스·메서드 수와 시나리오가 이관 전과 같다. `src/test/java`가 빈다. 스키마 대조 테스트는 `primaryConstructor.parameters` 순서로 검사한다. T9에서 넣은 `spotbugs-exclude-test.xml`의 `FakeStockRepository` 임시 제외를 지운다 (R2, m2)
   - 검증: `./gradlew :product-service:test :product-service:integrationTest` 실행 건수가 T11 뒤와 같음, `ktlintCheck`, `detekt`, `spotbugsTest`
   - tdd: false | risk: false | 담당: 메인
   - 결과:

@@ -1,15 +1,14 @@
-package com.hyoguoo.paymentplatform.product.presentation.port;
+package com.hyoguoo.paymentplatform.product.presentation.port
 
-import com.hyoguoo.paymentplatform.product.application.dto.ProductPage;
-import com.hyoguoo.paymentplatform.product.domain.Product;
+import com.hyoguoo.paymentplatform.product.application.dto.ProductPage
+import com.hyoguoo.paymentplatform.product.domain.Product
 
 /**
  * 상품 조회 inbound 포트.
  * ProductController가 REST 요청을 위임한다.
  */
-public interface ProductQueryService {
-
-    Product getById(Long id);
+interface ProductQueryService {
+    fun getById(id: Long): Product
 
     /**
      * 상품 목록을 확정 재고와 조인해 페이지 단위로 조회한다.
@@ -19,5 +18,8 @@ public interface ProductQueryService {
      * @param size 페이지 크기
      * @return 현재 페이지 상품 목록 + 전체 건수
      */
-    ProductPage getPage(int page, int size);
+    fun getPage(
+        page: Int,
+        size: Int,
+    ): ProductPage
 }

@@ -21,4 +21,15 @@
         <Class name="~.*ConcurrencyIntegrationTest"/>
     </Match>
 
+    <!--
+        product-service 코틀린 이관 중 임시 제외. 코틀린 포트 StockRepository.findByProductId(Long?) 의 @Nullable 을
+        자바 테스트 Fake 가 물려받아, null 을 받지 않는 맵 조회가 지적된다. 단위 테스트는 null 을 넘기지 않는다.
+        이 Fake 를 코틀린으로 옮기면 이 항목을 지운다(docs/topics/KOTLIN-PILOT-PRODUCT/DESIGN.md T12).
+    -->
+    <Match>
+        <Bug pattern="NP_PARAMETER_MUST_BE_NONNULL_BUT_MARKED_AS_NULLABLE"/>
+        <Class name="com.hyoguoo.paymentplatform.product.mock.FakeStockRepository"/>
+        <Method name="findByProductId"/>
+    </Match>
+
 </FindBugsFilter>
