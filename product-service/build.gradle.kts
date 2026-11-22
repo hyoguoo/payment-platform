@@ -153,6 +153,14 @@ ktlint {
     }
 }
 
+// CI 의 빌드·단위 테스트 단계는 lint 를 빼고 돌린 뒤 lint 를 전용 단계에서 따로 돌린다(.github/workflows/_service-ci.yml).
+// ktlint 플러그인은 소스 셋별 검사 태스크를 check 에 직접 붙여 -x ktlintCheck 만으로는 빠지지 않으므로 속성 하나로 끈다.
+if (providers.gradleProperty("skipKotlinLint").isPresent) {
+    tasks
+        .matching { (it.name.startsWith("ktlint") && it.name.endsWith("Check")) || it.name == "detekt" }
+        .configureEach { enabled = false }
+}
+
 // 편집 직후 훅(.agents/hooks/lint-file.sh → config/ktlint/check-file.sh)이 쓰는 ktlint CLI classpath 를 파일로 떨군다.
 // Gradle ktlintCheck 는 모듈 전체를 돌아 편집 직후 피드백으로 쓰기엔 느려 훅은 CLI 를 파일 하나에만 물린다.
 // 위 ktlint 설정 고정 규칙(이름이 ktlint 로 시작하는 configuration)이 이 classpath 에도 적용된다.

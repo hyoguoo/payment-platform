@@ -14,9 +14,9 @@
 - 문서: [BRIEF](topics/CHECKOUT-RECEIPT-TRACKING/BRIEF.md)
 
 ### KOTLIN-PILOT-PRODUCT: product-service를 코틀린으로 시범 이관
-- 규모·단계: 큼 · execute (T7 CI에 코틀린 정적 분석 단계)
+- 규모·단계: 큼 · execute (T8 도메인·예외·DTO·로그 유틸 코틀린 이관)
 - 추적: [#170](https://github.com/hyoguoo/payment-platform/issues/170) · 브랜치 `refactor/170-kotlin-pilot-product`
-- 다음: T7 → T8 도메인·DTO 이관
+- 다음: T8 → T9 유스케이스·컨트롤러
 - 막힘: 없음
 - 문서: [BRIEF](topics/KOTLIN-PILOT-PRODUCT/BRIEF.md) · [DESIGN](topics/KOTLIN-PILOT-PRODUCT/DESIGN.md)
 

@@ -252,13 +252,16 @@ implementer 후보: T6(hook·stack.md), T7(CI). 쓰기 범위가 product-service
     - 발견과 처리: 새 스크립트에 실행 권한이 없으면 hook이 "권한 없음"을 도구 실패로 보고 통과시킨다. 회귀 검사의 Java·Kotlin 위반 케이스가 이걸 잡아 `chmod +x`로 고쳤다
     - D16 조정: `ROOT_FILES`는 바꾸지 않았다. `config/detekt/`는 이미 `config/`에 들어 있고, `.editorconfig`는 단위 테스트 결과에 영향이 없어 전 모듈 검증을 일으킬 이유가 없다
     - 빌드 스크립트의 `KTLINT_VERSION` 이름이 ktlint `property-naming`에 걸려 `ktlintVersion`으로 바꿨다(이 편집 전에는 hook이 `.kts`를 보지 않아 바로 잡히지 않았다)
-- [ ] **T7: CI에 product-service 코틀린 정적 분석 단계 추가**
+- [x] **T7: CI에 product-service 코틀린 정적 분석 단계 추가**
   - 변경 위치: `.github/workflows/_service-ci.yml`, `.github/workflows/ci.yml`
   - 의존: T5
   - 완료 기준: 입력 `kotlin-lint`(기본 false)가 true일 때만 `ktlintCheck`·`detekt`가 돌고, 결과가 reviewdog checkstyle 경로로 올라가며, lint 게이트 판정에 들어간다. product job만 true다 (R7, D17)
   - 검증: YAML 문법 검사(`actionlint`가 있으면 그것, 없으면 `python3 -c "import yaml"` 파싱), 다른 서비스 job의 단계가 그대로인지 diff 확인. 실제 실행은 푸시 승인 뒤
   - tdd: false | risk: false | 담당: 메인 또는 implementer
-  - 결과:
+  - 결과: `_service-ci.yml`에 입력 `kotlin-lint`(기본 false), "Run Kotlin lint"(`ktlintCheck`·`detekt`, `continue-on-error`), "Reviewdog — Kotlin lint"(ktlint·detekt의 checkstyle 형식 XML), lint 게이트에 `kotlinlint` 결과(`failure`일 때만 막음) 추가. `ci.yml` product job만 `kotlin-lint: true`
+    - 발견과 처리: ktlint 플러그인이 소스 셋별 검사 태스크를 `check`에 직접 붙여 `-x ktlintCheck`만으로는 빌드 단계에서 lint가 빠지지 않았다. product-service 빌드에 `skipKotlinLint` 속성(주면 ktlint 검사·detekt 태스크를 끔)을 두고, CI 빌드 단계는 `kotlin-lint`일 때만 `-PskipKotlinLint`를 넘긴다. 속성이 없으면 `check`에 4개 태스크가 그대로 붙는 것을 확인
+    - 검사: `actionlint` 통과(처음 실행의 SC2094 정보 지적은 이름 계산을 변수로 빼서 해소), 빌드 단계 명령을 로컬에서 실행해 lint 태스크가 SKIPPED인지 확인. 다른 서비스 job은 입력 기본값 false라 명령·단계가 그대로다
+    - 미확인: 실제 GitHub Actions 실행(푸시 승인 뒤 확인). lint 요약 코멘트(`lint-<svc>.json`)에는 ktlint·detekt 건수를 넣지 않았다. 게이트와 reviewdog 인라인은 동작하지만 요약 코멘트의 건수에는 나오지 않는다
 - [ ] **T8: 도메인·예외·DTO·로그 유틸을 코틀린으로**
   - 변경 위치: `product/domain/*`, `product/exception/**`, `product/application/dto/*`, `product/presentation/dto/*`, `product/core/common/log/*`
   - 의존: T2, T3, T5
