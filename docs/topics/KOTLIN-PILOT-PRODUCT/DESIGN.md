@@ -183,7 +183,7 @@ implementer 후보: T6(hook·stack.md), T7(CI). 쓰기 범위가 product-service
   - 의존: 없음
   - 완료 기준: `product-service/src/main/{java,kotlin}/**/*Stock*`로 바뀌고 다른 패턴은 그대로다 (D19)
   - 검증: `uv run scripts/check-agent-docs.py --strict`
-  - tdd: false | risk: false | 담당: implementer(메인이 검증)
+  - tdd: false | risk: false | 담당: 메인
   - 결과: `.agents/profiles/risk.md:48` 패턴 한 개만 바꿈. `check-agent-docs.py --strict` 이번 변경으로 생긴 문제 0건(기존 Mermaid 금지 문자 17건은 workflow 스킬 문서의 것)
 - [x] **T2: 재고 확정 메시지 특성 테스트(자바, 통합)**
   - 변경 위치: `product-service/src/test/.../integration/` (격리 통합 테스트와 같은 설정의 새 테스트 클래스)
@@ -315,7 +315,7 @@ implementer 후보: T6(hook·stack.md), T7(CI). 쓰기 범위가 product-service
   - 의존: T11
   - 완료 기준: 테스트 클래스·메서드 수와 시나리오가 이관 전과 같다. `src/test/java`가 빈다. 스키마 대조 테스트는 `primaryConstructor.parameters` 순서로 검사한다. T9·T10에서 넣은 `spotbugs-exclude-test.xml`의 임시 제외 2건(`FakeStockRepository`, `ProductRepositoryImplPageTest`)을 지운다 (R2, m2)
   - 검증: `./gradlew :product-service:test :product-service:integrationTest` 실행 건수가 T11 뒤와 같음, `ktlintCheck`, `detekt`, `spotbugsTest`
-  - tdd: false | risk: false | 담당: 메인
+  - tdd: false | risk: false | 담당: implementer(메인이 검증)
   - 결과: 자바 테스트 25개를 지우고 코틀린 25개와 도우미 1개(`support/KMySQLContainer.kt`, 코틀린에서 `MySQLContainer<SELF>`를 만들기 위한 하위 타입)를 추가했다. `org.mockito` 사용 0건. main 코드 변경 없음. implementer가 작업하고 메인이 아래를 직접 확인했다
     - 실행 건수: `--rerun-tasks`로 `test` 70건, `integrationTest` 41건 통과. 클래스별 건수가 이관 전(자바)과 모두 같다(결과 XML의 testsuite 이름·건수 대조)
     - 특성 테스트 3개(HTTP 계약, 확정 메시지 호환, 격리 도달)의 문자열 리터럴 76·90·50개가 코틀린 쪽에 그대로 있다(빠진 것은 자바 전용 `@SuppressWarnings("resource")` 하나)
