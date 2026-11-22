@@ -297,13 +297,19 @@ implementer 후보: T6(hook·stack.md), T7(CI). 쓰기 범위가 product-service
     - 처음에는 공유 UTC `Calendar`를 호출마다 새로 만들게 썼다가 되돌렸다. 스레드 안전 문제일 수 있지만 이관 전 동작을 바꾸는 일이라 TODOS `DEDUPE-SHARED-CALENDAR`로 남겼다
     - 테스트 변경: `ProductRepositoryImplPageTest`의 엔티티 빌더 2곳을 생성자로. 그중 `new StockEntity(savedProduct.getId(), …)`가 SpotBugs `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE`에 걸려 이 메서드만 임시 제외(T12에서 지움)
     - 검사: `test` 70건, `integrationTest` 41건, `ktlintCheck`, `detekt`, `checkstyleMain`·`checkstyleTest`, `spotbugsMain`·`spotbugsTest`, `jacocoTestCoverageVerification` 통과
-- [ ] **T11: 메시징·설정·스케줄러·메트릭·애플리케이션 진입점을 코틀린으로, Lombok 제거**
+- [x] **T11: 메시징·설정·스케줄러·메트릭·애플리케이션 진입점을 코틀린으로, Lombok 제거**
   - 변경 위치: `product/infrastructure/{messaging,config,scheduler,metrics}/**`, `ProductServiceApplication`, `product-service/build.gradle.kts`(Lombok 제외), `config/spotbugs/spotbugs-exclude*.xml`
   - 의존: T10
   - 완료 기준: `src/main/java`가 비고 Lombok이 classpath에 없다. 리스너는 non-null 파라미터의 동기 함수, 확정 메시지는 "필드별 처리" 표대로, 변환기는 Boot ObjectMapper를 쓴다. 의도된 광범위 catch는 `@Suppress`와 이유 주석. SpotBugs 오탐은 생성 메서드·패턴 단위로만 제외. 커버리지 97%가 떨어지면 멈추고 묻는다 (R1, R4~R7, D7, D10, D14, D18, D20, FS-4~6, FS-9~14)
   - 검증: T8과 같음 + `dependencies --configuration compileClasspath`에 Lombok 없음, `find product-service/src/main/java -type f` 결과 없음, `jacocoTestCoverageVerification`
   - tdd: false | risk: true | 담당: 메인
-  - 결과:
+  - 결과: 남은 12개(`ProductServiceApplication`, `DependencyHealthMetrics`, 설정 6개, `DedupeCleanupWorker`, `ProductTopics`, `StockCommitConsumer`, `StockCommittedMessage`)를 코틀린으로 옮겼다. `src/main/java`가 비었고 `compileClasspath`·`annotationProcessor`에 Lombok이 없다(루트가 넣는 Lombok을 이 모듈에서 제외)
+    - 확정 메시지: 6개 필드 모두 nullable. 컨슈머는 `productId!!`(NPE, 재시도 뒤 격리), `qty ?: 0`, `orderId ?: ""`로 자바 결과를 그대로 낸다. 리스너 파라미터는 non-null, 동기 함수. 변환기는 Boot ObjectMapper 그대로. T2 특성 테스트 12건 통과(원인 예외 헤더 포함)
+    - 테스트 때문에 정한 선언: `KafkaErrorHandlerConfig`는 테스트가 인자 없는 생성자 + 반사로 필드를 채워 필드 주입(`@Value private var`)으로 뒀다. package-private 상수는 `internal const val`
+    - detekt 억제(이유 주석 포함): `DedupeCleanupWorker`의 `RuntimeException` catch(D7), `DependencyHealthMetrics`·`StockCommitQuarantineRecoverer`의 예외를 DOWN·원본 키 처리로 바꾸는 catch(`SwallowedException`), `main`의 `SpreadOperator`
+    - SpotBugs: 코틀린 바이트코드에서 새 지적이 없어 main 제외 항목을 넣지 않았다(D18)
+    - 커버리지(D20): 처음에 0.95로 실패했다. 원인 두 가지를 고쳤고 97% 기준은 그대로다. (1) 루트 빌드가 리포트의 클래스 디렉토리를 설정 시점의 자바 출력 경로로 고정해 자바 소스가 없어지자 리포트가 비었다(CI 커버리지 코멘트도 비게 된다). product 빌드에서 리포트가 검증 태스크와 같은 목록을 쓰게 했다. (2) 코틀린은 최상위 `main`을 `ProductServiceApplicationKt`로 컴파일해 루트 제외 패턴 `**/*Application.class`에 걸리지 않았다. 같은 이유로 `*ApplicationKt`를 이 모듈에서 뺐다. 결과 68/69줄(98.6%). 남은 1줄은 `ProductQueryUseCase.getPage`(단위 테스트가 부르지 않음)
+    - 검사: `test` 70건, `integrationTest` 41건, `ktlintCheck`, `detekt`, `checkstyleMain`(소스 없음)·`checkstyleTest`, `spotbugsMain`·`spotbugsTest`, `jacocoTestCoverageVerification`, `bootJar`(Start-Class `ProductServiceApplicationKt`) 통과
 - [ ] **T12: 테스트를 코틀린(MockK·springmockk)으로**
   - 변경 위치: `product-service/src/test/java/**` → `src/test/kotlin/**`
   - 의존: T11

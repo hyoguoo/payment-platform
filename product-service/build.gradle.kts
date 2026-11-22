@@ -75,6 +75,13 @@ dependencyManagement {
     }
 }
 
+// 루트 subprojects 가 모든 모듈에 Lombok 을 넣는다. 코틀린 모듈인 product-service 는 쓰지 않으므로 뺀다.
+listOf("compileOnly", "annotationProcessor").forEach { name ->
+    configurations.named(name) {
+        exclude(group = "org.projectlombok", module = "lombok")
+    }
+}
+
 configurations.all {
     resolutionStrategy.eachDependency {
         if (requested.group == "org.testcontainers") {
@@ -121,6 +128,25 @@ tasks.named<KotlinCompile>("compileKotlin") {
 // Dockerfile 이 build/libs/*.jar 하나만 있다고 보고 복사하므로 plain jar 는 build/libs 밖에 둔다.
 tasks.named<Jar>("jar") {
     destinationDirectory.set(layout.buildDirectory.dir("libs-plain"))
+}
+
+// 루트 빌드는 커버리지 리포트의 클래스 디렉토리를 설정 시점의 자바 출력 경로로 고정한다. 자바 소스가 없는 이 모듈은
+// 그대로 두면 리포트가 비므로, 루트가 afterEvaluate 에서 main 출력 전체(코틀린 포함)로 잡는 검증 태스크와
+// 같은 목록을 실행 시점에 쓴다. 검증 태스크가 리포트에 의존하므로 태스크가 아닌 목록만 읽어 순환을 피한다.
+tasks.named<JacocoReport>("jacocoTestReport") {
+    classDirectories.setFrom(
+        provider { tasks.getByName<JacocoCoverageVerification>("jacocoTestCoverageVerification").classDirectories },
+    )
+}
+
+// 루트 제외 패턴 **/*Application.class 는 진입점 main 을 커버리지에서 뺀다. 코틀린은 최상위 main 을
+// <파일명>Kt 클래스로 컴파일해 이 패턴에 걸리지 않으므로, 같은 이유로 *ApplicationKt 도 뺀다(루트 afterEvaluate 뒤에 적용).
+afterEvaluate {
+    tasks.named<JacocoCoverageVerification>("jacocoTestCoverageVerification") {
+        // 루트가 넣은 목록을 먼저 떼어 낸다. classDirectories 자신을 원본으로 쓰면 자기 참조가 된다.
+        val rootMeasured = objects.fileCollection().from(classDirectories.from.toList())
+        classDirectories.setFrom(rootMeasured.asFileTree.matching { exclude("**/*ApplicationKt.class") })
+    }
 }
 
 // 지연 로딩 프록시가 엔티티를 상속할 수 있게 연다. kotlin-spring 이 Spring 애노테이션 클래스를 여는 것과 같은 방식이다.

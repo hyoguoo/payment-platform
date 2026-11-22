@@ -14,9 +14,9 @@
 - 문서: [BRIEF](topics/CHECKOUT-RECEIPT-TRACKING/BRIEF.md)
 
 ### KOTLIN-PILOT-PRODUCT: product-service를 코틀린으로 시범 이관
-- 규모·단계: 큼 · execute (T11 메시징·설정·스케줄러·메트릭 이관, Lombok 제거)
+- 규모·단계: 큼 · execute (T12 테스트 코틀린·MockK 이관)
 - 추적: [#170](https://github.com/hyoguoo/payment-platform/issues/170) · 브랜치 `refactor/170-kotlin-pilot-product`
-- 다음: T11 → T12 테스트 코틀린 이관
+- 다음: T12 → T13 자바 호환 표기 정리 → ship
 - 막힘: 없음
 - 문서: [BRIEF](topics/KOTLIN-PILOT-PRODUCT/BRIEF.md) · [DESIGN](topics/KOTLIN-PILOT-PRODUCT/DESIGN.md)
 
