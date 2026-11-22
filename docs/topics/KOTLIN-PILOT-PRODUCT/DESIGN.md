@@ -218,13 +218,16 @@ implementer 후보: T6(hook·stack.md), T7(CI). 쓰기 범위가 product-service
     - 검출력: 응답 필드 순서 바꾸기와 차감 `@Transactional` 제거를 넣자 본문 비교 4건, 롤백 4건이 실패. 되돌린 뒤 main diff 없음
     - 검사: `./gradlew :product-service:integrationTest :product-service:test :product-service:checkstyleTest` 통과(통합 41건, 단위 70건, 실패 0)
     - 범위 밖 발견: 차감 API 입력 검증 없음 → TODOS `STOCK-DECREASE-INPUT-VALIDATION`
-- [ ] **T4: 이관 전 로컬 스택 기준선 기록**
+- [x] **T4: 이관 전 로컬 스택 기준선 기록**
   - 변경 위치: `docs/topics/KOTLIN-PILOT-PRODUCT/baseline/` (비교 스크립트와 결과)
   - 의존: 없음
   - 완료 기준: 자바 product-service로 판정 4의 5개 시나리오를 실행하고 결과(응답 JSON, 재고 수치, 격리 토픽 메시지, 스모크 결과)를 파일로 남긴다. 같은 스크립트를 ship에서 다시 돌린다 (판정 4)
   - 검증: 스크립트 실행 결과, `bash scripts/smoke-all.sh --with-trace`
   - tdd: false | risk: false | 담당: 메인
-  - 결과:
+  - 결과: `baseline/compare.sh`와 자바 결과(`baseline/java/`, `smoke.log` 원문은 커밋하지 않음). 같은 코드로 두 번 돌려 `diff -r -x smoke.log` 차이 없음을 확인했다
+    - 결과: 단건 200·없는 상품 404, 결제 확정 202 → DONE 뒤 상품 1 재고 1 감소, 같은 확정 메시지 2회에 재고 10 → 8(중복 판정 행 1), 재고 부족 메시지는 `orderId:9902` 키로 격리되고 재고 유지, `smoke-all.sh --with-trace` 12단계 통과
+    - 기동 절차: `bash scripts/compose-up.sh --mode fake` 뒤 docker 프로필은 시드를 막으므로 `V2__seed_product_stock.sql`을 mysql-product에 넣고 `bash scripts/seed-stock.sh`로 Redis 재고 캐시를 맞춘다. ship 비교도 같은 절차를 쓴다
+    - 첫 실행에서 두 가지를 고쳤다(스크립트 결함): checkout 응답이 `data`로 감싸져 있어 `orderId`를 못 읽음, 확정 메시지의 `expiresAt`을 과거로 넣어 중복 판정 기록이 만료 삭제되고 두 번째 메시지도 차감됨(`recordIfAbsent`는 만료 기록을 지우고 다시 넣는다)
 - [ ] **T5: product-service 빌드를 `build.gradle.kts`로 바꾸고 Kotlin·ktlint·detekt를 건다**
   - 변경 위치: `product-service/build.gradle` → `build.gradle.kts`, 루트 `.editorconfig`(새 파일), `config/detekt/detekt.yml`(새 파일)
   - 의존: 없음

@@ -14,9 +14,9 @@
 - 문서: [BRIEF](topics/CHECKOUT-RECEIPT-TRACKING/BRIEF.md)
 
 ### KOTLIN-PILOT-PRODUCT: product-service를 코틀린으로 시범 이관
-- 규모·단계: 큼 · execute (T4 이관 전 로컬 스택 기준선)
+- 규모·단계: 큼 · execute (T5 product 빌드를 build.gradle.kts로 전환)
 - 추적: [#170](https://github.com/hyoguoo/payment-platform/issues/170) · 브랜치 `refactor/170-kotlin-pilot-product`
-- 다음: T4 → T5 빌드 전환
+- 다음: T5 → T6 hook·stack.md, T7 CI
 - 막힘: 없음
 - 문서: [BRIEF](topics/KOTLIN-PILOT-PRODUCT/BRIEF.md) · [DESIGN](topics/KOTLIN-PILOT-PRODUCT/DESIGN.md)
 
