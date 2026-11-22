@@ -41,14 +41,7 @@ class ProductControllerListTest {
     @DisplayName("목록조회_응답_형태_고정: 내용·페이지·크기·전체건수·전체페이지 필드를 반환한다")
     void 목록조회_응답_형태_고정() throws Exception {
         // given
-        Product product = Product.allArgsBuilder()
-                .id(1L)
-                .name("상품-1")
-                .price(BigDecimal.valueOf(1000))
-                .description("설명")
-                .stock(42)
-                .sellerId(1L)
-                .allArgsBuild();
+        Product product = new Product(1L, "상품-1", BigDecimal.valueOf(1000), "설명", 42, 1L);
         ProductPage productPage = new ProductPage(List.of(product), 0, 20, 1L);
         given(productQueryService.getPage(0, 20)).willReturn(productPage);
 

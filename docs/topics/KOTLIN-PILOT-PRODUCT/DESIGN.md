@@ -262,14 +262,18 @@ implementer 후보: T6(hook·stack.md), T7(CI). 쓰기 범위가 product-service
     - 발견과 처리: ktlint 플러그인이 소스 셋별 검사 태스크를 `check`에 직접 붙여 `-x ktlintCheck`만으로는 빌드 단계에서 lint가 빠지지 않았다. product-service 빌드에 `skipKotlinLint` 속성(주면 ktlint 검사·detekt 태스크를 끔)을 두고, CI 빌드 단계는 `kotlin-lint`일 때만 `-PskipKotlinLint`를 넘긴다. 속성이 없으면 `check`에 4개 태스크가 그대로 붙는 것을 확인
     - 검사: `actionlint` 통과(처음 실행의 SC2094 정보 지적은 이름 계산을 변수로 빼서 해소), 빌드 단계 명령을 로컬에서 실행해 lint 태스크가 SKIPPED인지 확인. 다른 서비스 job은 입력 기본값 false라 명령·단계가 그대로다
     - 미확인: 실제 GitHub Actions 실행(푸시 승인 뒤 확인). lint 요약 코멘트(`lint-<svc>.json`)에는 ktlint·detekt 건수를 넣지 않았다. 게이트와 reviewdog 인라인은 동작하지만 요약 코멘트의 건수에는 나오지 않는다
-- [ ] **T8: 도메인·예외·DTO·로그 유틸을 코틀린으로**
+- [x] **T8: 도메인·예외·DTO·로그 유틸을 코틀린으로**
   - 변경 위치: `product/domain/*`, `product/exception/**`, `product/application/dto/*`, `product/presentation/dto/*`, `product/core/common/log/*`
   - 의존: T2, T3, T5
   - 완료 기준: record는 `@JvmRecord data class`, Lombok 빌더는 주 생성자, 자바 테스트는 빌더 호출만 생성자 호출로 바꾼다. `ProductStockException.of` 같은 static 접근은 `@JvmStatic`으로 유지한다 (R1, R3, D8, D9, D21)
   - 검증: `./gradlew :product-service:test :product-service:integrationTest`, `ktlintCheck`, `detekt`, `spotbugsMain`, `checkstyleTest`, 자바 테스트 diff가 객체 생성 줄뿐인지 확인
   - tdd: false(기존·특성 테스트가 명세) | risk: true(`Stock`) | 담당: 메인
-  - 결과:
-- [ ] **T9: 유스케이스·포트·컨트롤러를 코틀린으로**
+  - 결과: 16개 파일을 코틀린으로 옮기고 T9의 `StockCommandUseCase`를 당겨 함께 옮겼다(아래). record 7개는 `@JvmRecord data class`, `Product`·`Stock`은 non-null 일반 class(DB 컬럼이 모두 NOT NULL이고 테스트도 항상 전 필드를 채움), HTTP 입력인 `StockCommandItem`·`ProductStockCommand`는 nullable, 자바가 부르는 정적 함수는 `@JvmStatic`, `LogFmt`는 `object` + 메시지 람다(`() -> String?`)
+    - 자바 main의 빌더 호출 4곳(`StockCommitUseCase`, `ProductEntity`, `StockEntity`, 옮기기 전 `StockCommandUseCase`)은 생성자 호출로 바꿨다
+    - 판정 1 예외(개발자 결정, 2026-11-23): 코틀린 non-null `Long`이 자바에서 원시 `long`이 되어 `getId().equals(y)` 형태 단언 3줄이 컴파일되지 않았다. `== y`로만 바꿨다(`StockCommandUseCaseTest` 2줄, `ProductRepositoryImplPageTest` 1줄). 그 밖의 자바 테스트 변경은 모두 빌더 → 생성자 줄임을 staged diff로 확인
+    - `StockCommandUseCase`를 당긴 이유: 코틀린 `Int?` 접근자에 `@Nullable` 표기가 붙자 SpotBugs가 자바 코드의 언박싱을 `NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE`로 잡았고, `Objects.requireNonNull`로 감싸도 계속 잡았다. 곧 지울 자바 코드를 SpotBugs에 맞추는 대신 코틀린으로 옮기고 `!!`로 같은 NPE(500, 롤백)를 유지했다
+    - 검사: `test` 70건, `integrationTest` 41건(HTTP 계약 17건 포함, 응답 본문 문자열 비교 그대로 통과), `ktlintCheck`, `detekt`, `checkstyleMain`·`checkstyleTest`, `spotbugsMain`·`spotbugsTest`, `jacocoTestCoverageVerification` 통과
+- [ ] **T9: 유스케이스·포트·컨트롤러를 코틀린으로** (`StockCommandUseCase`는 T8에서 옮김)
   - 변경 위치: `product/application/port/**`, `product/application/usecase/*`, `product/presentation/**`
   - 의존: T8
   - 완료 기준: `@Transactional` 경계, 처리 순서, 예외 타입이 같다. null 처리에 `requireNotNull`·`?: return`을 쓰지 않는다 (R3, R4, R5, D10, FS-1~3)

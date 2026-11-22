@@ -18,10 +18,7 @@ public class FakeStockRepository implements StockRepository {
     @Override
     public Optional<Stock> findByProductId(Long productId) {
         return Optional.ofNullable(store.get(productId))
-                .map(quantity -> Stock.allArgsBuilder()
-                        .productId(productId)
-                        .quantity(quantity)
-                        .allArgsBuild());
+                .map(quantity -> new Stock(productId, quantity));
     }
 
     @Override

@@ -101,7 +101,7 @@ class ProductRepositoryImplPageTest {
 
         // then
         assertThat(result.content())
-                .filteredOn(product -> product.getId().equals(productId))
+                .filteredOn(product -> product.getId() == productId)
                 .extracting(Product::getStock)
                 .containsExactly(42);
     }

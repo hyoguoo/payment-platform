@@ -41,10 +41,7 @@ class StockCommandUseCaseTest {
         int currentQuantity = 50;
         int decreaseAmount = 10;
 
-        Stock currentStock = Stock.allArgsBuilder()
-                .productId(productId)
-                .quantity(currentQuantity)
-                .allArgsBuild();
+        Stock currentStock = new Stock(productId, currentQuantity);
         given(stockRepository.findByProductId(productId)).willReturn(Optional.of(currentStock));
 
         List<ProductStockCommand> commands = List.of(new ProductStockCommand(productId, decreaseAmount));
@@ -71,9 +68,9 @@ class StockCommandUseCaseTest {
         int decreaseAmount2 = 8;
 
         given(stockRepository.findByProductId(productId1)).willReturn(Optional.of(
-                Stock.allArgsBuilder().productId(productId1).quantity(currentQuantity1).allArgsBuild()));
+                new Stock(productId1, currentQuantity1)));
         given(stockRepository.findByProductId(productId2)).willReturn(Optional.of(
-                Stock.allArgsBuilder().productId(productId2).quantity(currentQuantity2).allArgsBuild()));
+                new Stock(productId2, currentQuantity2)));
 
         List<ProductStockCommand> commands = List.of(
                 new ProductStockCommand(productId1, decreaseAmount1),
@@ -89,9 +86,9 @@ class StockCommandUseCaseTest {
 
         List<Stock> savedStocks = captor.getAllValues();
         assertThat(savedStocks).anyMatch(s ->
-                s.getProductId().equals(productId1) && s.getQuantity() == currentQuantity1 - decreaseAmount1);
+                s.getProductId() == productId1 && s.getQuantity() == currentQuantity1 - decreaseAmount1);
         assertThat(savedStocks).anyMatch(s ->
-                s.getProductId().equals(productId2) && s.getQuantity() == currentQuantity2 - decreaseAmount2);
+                s.getProductId() == productId2 && s.getQuantity() == currentQuantity2 - decreaseAmount2);
     }
 
     @Test
@@ -102,10 +99,7 @@ class StockCommandUseCaseTest {
         int currentQuantity = 5;
         int decreaseAmount = 10; // 재고(5)보다 많음
 
-        Stock currentStock = Stock.allArgsBuilder()
-                .productId(productId)
-                .quantity(currentQuantity)
-                .allArgsBuild();
+        Stock currentStock = new Stock(productId, currentQuantity);
         given(stockRepository.findByProductId(productId)).willReturn(Optional.of(currentStock));
 
         List<ProductStockCommand> commands = List.of(new ProductStockCommand(productId, decreaseAmount));

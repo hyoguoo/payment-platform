@@ -51,13 +51,6 @@ public class ProductEntity {
     private LocalDateTime updatedAt;
 
     public Product toDomain(Integer stock) {
-        return Product.allArgsBuilder()
-                .id(id)
-                .name(name)
-                .price(price)
-                .description(description)
-                .stock(stock)
-                .sellerId(sellerId)
-                .allArgsBuild();
+        return new Product(id, name, price, description, stock, sellerId);
     }
 }

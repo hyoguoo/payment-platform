@@ -19,14 +19,7 @@ class ProductTest {
 
     @BeforeEach
     void setUp() {
-        product = Product.allArgsBuilder()
-                .id(1L)
-                .name("테스트 상품")
-                .price(BigDecimal.valueOf(10000))
-                .description("설명")
-                .stock(100)
-                .sellerId(1L)
-                .allArgsBuild();
+        product = new Product(1L, "테스트 상품", BigDecimal.valueOf(10000), "설명", 100, 1L);
     }
 
     // ── decrementStock ────────────────────────────────────────────────────────

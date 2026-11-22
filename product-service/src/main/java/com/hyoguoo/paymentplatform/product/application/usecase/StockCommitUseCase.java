@@ -110,10 +110,7 @@ public class StockCommitUseCase {
             throw ProductStockException.of(ProductErrorCode.NOT_ENOUGH_STOCK);
         }
 
-        Stock updated = Stock.allArgsBuilder()
-                .productId(productId)
-                .quantity(newQuantity)
-                .allArgsBuild();
+        Stock updated = new Stock(productId, newQuantity);
         stockRepository.save(updated);
 
         LogFmt.info(log, LogDomain.STOCK, EventType.STOCK_COMMIT_RDB_DONE,

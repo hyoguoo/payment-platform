@@ -20,10 +20,7 @@ class FakeStockRepositoryTest {
     @Test
     @DisplayName("save 후 findByProductId — 왕복 검증")
     void saveAndFindByProductId_Roundtrip() {
-        Stock stock = Stock.allArgsBuilder()
-                .productId(1L)
-                .quantity(100)
-                .allArgsBuild();
+        Stock stock = new Stock(1L, 100);
 
         repository.save(stock);
         Optional<Stock> found = repository.findByProductId(1L);
@@ -44,7 +41,7 @@ class FakeStockRepositoryTest {
     @Test
     @DisplayName("increment — 원자적 재고 증가")
     void increment_IncreasesStock() {
-        repository.save(Stock.allArgsBuilder().productId(1L).quantity(50).allArgsBuild());
+        repository.save(new Stock(1L, 50));
 
         int after = repository.increment(1L, 10);
 
@@ -55,7 +52,7 @@ class FakeStockRepositoryTest {
     @Test
     @DisplayName("decrement — 재고 충분 시 감소 성공")
     void decrement_SufficientStock_ReturnsTrue() {
-        repository.save(Stock.allArgsBuilder().productId(1L).quantity(50).allArgsBuild());
+        repository.save(new Stock(1L, 50));
 
         boolean success = repository.decrement(1L, 30);
 
@@ -66,7 +63,7 @@ class FakeStockRepositoryTest {
     @Test
     @DisplayName("decrement — 재고 부족 시 감소 실패 (음수 방어)")
     void decrement_InsufficientStock_ReturnsFalse() {
-        repository.save(Stock.allArgsBuilder().productId(1L).quantity(5).allArgsBuild());
+        repository.save(new Stock(1L, 5));
 
         boolean success = repository.decrement(1L, 10);
 

@@ -31,14 +31,7 @@ class ProductQueryUseCaseTest {
     void getById_whenProductExists_returnsProduct() {
         // given
         long productId = 1L;
-        Product product = Product.allArgsBuilder()
-                .id(productId)
-                .name("테스트 상품")
-                .price(BigDecimal.valueOf(10000))
-                .description("상품 설명")
-                .stock(50)
-                .sellerId(1L)
-                .allArgsBuild();
+        Product product = new Product(productId, "테스트 상품", BigDecimal.valueOf(10000), "상품 설명", 50, 1L);
         given(productRepository.findById(productId)).willReturn(Optional.of(product));
 
         // when

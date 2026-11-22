@@ -42,9 +42,6 @@ public class StockEntity {
     }
 
     public Stock toDomain() {
-        return Stock.allArgsBuilder()
-                .productId(productId)
-                .quantity(quantity)
-                .allArgsBuild();
+        return new Stock(productId, quantity);
     }
 }

@@ -44,10 +44,7 @@ class StockCommitUseCaseTest {
         int qty = 5;
         int initialStock = 20;
 
-        fakeStockRepository.save(Stock.allArgsBuilder()
-                .productId(productId)
-                .quantity(initialStock)
-                .allArgsBuild());
+        fakeStockRepository.save(new Stock(productId, initialStock));
 
         Instant now = Instant.now();
         Instant expiresAt = now.plusSeconds(3600);
@@ -67,10 +64,7 @@ class StockCommitUseCaseTest {
         int qty = 3;
         int initialStock = 10;
 
-        fakeStockRepository.save(Stock.allArgsBuilder()
-                .productId(productId)
-                .quantity(initialStock)
-                .allArgsBuild());
+        fakeStockRepository.save(new Stock(productId, initialStock));
 
         Instant now = Instant.now();
         Instant expiresAt = now.plusSeconds(3600);
@@ -108,10 +102,7 @@ class StockCommitUseCaseTest {
         int qty = 2;
         int initialStock = 15;
 
-        fakeStockRepository.save(Stock.allArgsBuilder()
-                .productId(productId)
-                .quantity(initialStock)
-                .allArgsBuild());
+        fakeStockRepository.save(new Stock(productId, initialStock));
 
         Instant now = Instant.now();
         Instant expiresAt = now.plusSeconds(3600);
@@ -138,10 +129,7 @@ class StockCommitUseCaseTest {
         int qty = 7;
         int initialStock = 30;
 
-        fakeStockRepository.save(Stock.allArgsBuilder()
-                .productId(productId)
-                .quantity(initialStock)
-                .allArgsBuild());
+        fakeStockRepository.save(new Stock(productId, initialStock));
 
         Instant now = Instant.now();
         Instant expiresAt = now.plusSeconds(3600);
@@ -165,10 +153,7 @@ class StockCommitUseCaseTest {
         int initialStock = 3;
         int qty = 5;
 
-        fakeStockRepository.save(Stock.allArgsBuilder()
-                .productId(productId)
-                .quantity(initialStock)
-                .allArgsBuild());
+        fakeStockRepository.save(new Stock(productId, initialStock));
 
         Instant now = Instant.now();
         Instant expiresAt = now.plusSeconds(3600);
@@ -193,10 +178,7 @@ class StockCommitUseCaseTest {
         int initialStock = 1;
         int qty = 2;
 
-        fakeStockRepository.save(Stock.allArgsBuilder()
-                .productId(productId)
-                .quantity(initialStock)
-                .allArgsBuild());
+        fakeStockRepository.save(new Stock(productId, initialStock));
 
         Instant now = Instant.now();
         Instant expiresAt = now.plusSeconds(3600);
