@@ -24,6 +24,9 @@ extra["kotlin.version"] = "2.4.21"
 
 val testcontainersVersion: String by extra
 
+// Gradle ktlint 플러그인과 편집 직후 훅의 ktlint CLI 가 같은 버전으로 검사하게 한 곳에서 정한다.
+val ktlintVersion = "1.8.0"
+
 dependencies {
     // Spring Boot Core (MVC + Virtual Threads — pg-service 구성 대칭)
     implementation("org.springframework.boot:spring-boot-starter-web")
@@ -143,10 +146,29 @@ tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
 }
 
 ktlint {
-    version.set("1.8.0")
+    version.set(ktlintVersion)
     reporters {
         reporter(ReporterType.PLAIN)
         reporter(ReporterType.CHECKSTYLE)
+    }
+}
+
+// 편집 직후 훅(.agents/hooks/lint-file.sh → config/ktlint/check-file.sh)이 쓰는 ktlint CLI classpath 를 파일로 떨군다.
+// Gradle ktlintCheck 는 모듈 전체를 돌아 편집 직후 피드백으로 쓰기엔 느려 훅은 CLI 를 파일 하나에만 물린다.
+// 위 ktlint 설정 고정 규칙(이름이 ktlint 로 시작하는 configuration)이 이 classpath 에도 적용된다.
+val ktlintCli: Configuration by configurations.creating
+
+dependencies {
+    ktlintCli("com.pinterest.ktlint:ktlint-cli:$ktlintVersion")
+}
+
+tasks.register("writeKtlintCliClasspath") {
+    description = "편집 직후 훅이 쓰는 ktlint CLI classpath 를 기록한다."
+    val classpathFile = layout.buildDirectory.file("ktlint-cli-classpath.txt")
+    val cliClasspath: FileCollection = ktlintCli
+    outputs.file(classpathFile)
+    doLast {
+        classpathFile.get().asFile.writeText(cliClasspath.asPath)
     }
 }
 

@@ -241,13 +241,17 @@ implementer 후보: T6(hook·stack.md), T7(CI). 쓰기 범위가 product-service
     - D6 수정: `var` 금지 → `VarCouldBeVal` 대응을 뺐다(목적이 다르고, 타입 분석이 필요해 `detekt` 태스크에서 돌지 않음)
     - 발견과 처리: 코틀린 플러그인이 테스트 컴파일에 main jar를 연결해 테스트만 돌려도 `-plain.jar`가 `build/libs`에 생겼다(자바 서비스는 생기지 않음). Dockerfile `COPY build/libs/*.jar app.jar`가 jar 두 개에서 깨질 수 있어 plain jar 출력 위치를 `build/libs-plain`으로 옮겼다. `clean` 뒤 테스트·`bootJar` 후 `build/libs`에 jar 하나만 있음을 확인
     - 검사: `test`(70건), `integrationTest`(41건), `checkstyleMain`·`checkstyleTest`·`spotbugsMain`·`spotbugsTest`·`ktlintCheck`·`detekt`(코틀린 소스 없음, 빌드 스크립트는 ktlint가 검사)·`bootJar`·`jacocoTestCoverageVerification` 통과
-- [ ] **T6: 편집·종료 hook과 stack.md에 코틀린 반영**
+- [x] **T6: 편집·종료 hook과 stack.md에 코틀린 반영**
   - 변경 위치: `config/lint-file.sh`(새 파일), `product-service/build.gradle.kts`(ktlint CLI classpath 태스크), `.agents/profiles/stack.md`(버전 표, 정적 분석 명령, `verify-config`)
   - 의존: T5
   - 완료 기준: `.kt`·`.kts` 편집 직후 ktlint가 그 파일만 검사하고, `.java`는 지금처럼 Checkstyle이 검사한다. 종료 hook이 `.kt` 변경을 검증 대상으로 본다 (R7, D15, D16)
   - 검증: `bash scripts/test-hooks.sh`, `bash -n config/lint-file.sh`, 위반 있는·없는 `.kt`와 `.java`로 분배 스크립트 종료 코드 확인, `uv run scripts/check-agent-docs.py --strict`
   - tdd: true(hook 회귀 검사에 `.kt` 케이스 추가) | risk: false | 담당: 메인 또는 implementer
-  - 결과:
+  - 결과: `config/lint-file.sh`(확장자별 분배), `config/ktlint/check-file.sh`(ktlint CLI로 파일 하나 검사), product-service `writeKtlintCliClasspath` 태스크, stack.md(제목, 버전 표, Kotlin 정적 분석 행, `VERIFY_PATTERN`·`LINT_FILE_PATTERN`·`LINT_FILE`), `scripts/test-hooks.sh`에 코틀린 케이스 6건과 FS-8 픽스처의 분배 스크립트 추가
+    - 검사: `bash scripts/test-hooks.sh` 42건 통과. 실패 먼저 확인: `VERIFY_PATTERN`·`LINT_FILE_PATTERN`을 이전 값으로 돌리면 새 케이스 6건이 실패. `bash -n` 3개 스크립트 통과, `check-agent-docs.py --strict` 새 문제 0건, product `ktlintCheck`·`detekt`·`test` 통과
+    - 발견과 처리: 새 스크립트에 실행 권한이 없으면 hook이 "권한 없음"을 도구 실패로 보고 통과시킨다. 회귀 검사의 Java·Kotlin 위반 케이스가 이걸 잡아 `chmod +x`로 고쳤다
+    - D16 조정: `ROOT_FILES`는 바꾸지 않았다. `config/detekt/`는 이미 `config/`에 들어 있고, `.editorconfig`는 단위 테스트 결과에 영향이 없어 전 모듈 검증을 일으킬 이유가 없다
+    - 빌드 스크립트의 `KTLINT_VERSION` 이름이 ktlint `property-naming`에 걸려 `ktlintVersion`으로 바꿨다(이 편집 전에는 hook이 `.kts`를 보지 않아 바로 잡히지 않았다)
 - [ ] **T7: CI에 product-service 코틀린 정적 분석 단계 추가**
   - 변경 위치: `.github/workflows/_service-ci.yml`, `.github/workflows/ci.yml`
   - 의존: T5

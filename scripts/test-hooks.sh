@@ -167,6 +167,15 @@ stop_case "종료검증: 이미 통과한 상태는 다시 돌리지 않는다" 
 echo 'doc' >> "$REPO/README.md"
 stop_case "종료검증: 통과 뒤 문서만 고치면 다시 돌리지 않는다 (FS-1)" "$REPO" "" s-pass 0 1
 
+# FS-2(코틀린): product-service의 .kt·.kts 변경도 그 모듈의 test를 돌린다
+REPO=$(new_repo)
+mkdir -p "$REPO/product-service/src"
+echo 'class Foo' > "$REPO/product-service/src/Foo.kt"
+stop_case "종료검증: 코틀린 소스 변경도 그 모듈만 테스트한다 (FS-2)" "$REPO" "" s-kotlin 0 1
+record "종료검증: 코틀린 변경의 태스크는 :product-service:test 하나다 (FS-2)" "--console=plain :product-service:test" "$(last_call "$REPO")"
+echo '// build' > "$REPO/product-service/build.gradle.kts"
+stop_case "종료검증: 모듈 빌드 스크립트(.kts) 변경도 그 모듈을 테스트한다 (FS-2)" "$REPO" "" s-kotlin 0 2
+
 # FS-3: 루트 빌드 설정이 바뀌면 전 모듈을 한 번 돌리고, 통과한 뒤에는 바뀐 모듈만 돈다
 REPO=$(new_repo)
 echo '// root' > "$REPO/build.gradle"
@@ -272,6 +281,8 @@ record "편집린트: 저장소 밖 Java 파일은 건너뛴다" "0" "$(run_lint
 # FS-8: 린트 도구가 실패하면(종료 코드 2) 막지 않는다
 REPO=$(new_repo)
 mkdir -p "$REPO/config/checkstyle" "$REPO/payment-service/src"
+# 실제 분배 스크립트를 두고 그 아래 검사기만 실패하게 해서, 분배를 거친 도구 실패도 막지 않는지 본다
+cp "$PROJECT_DIR/config/lint-file.sh" "$REPO/config/lint-file.sh"
 printf '#!/bin/bash\necho "java 없음" >&2\nexit 2\n' > "$REPO/config/checkstyle/check-file.sh"
 chmod +x "$REPO/config/checkstyle/check-file.sh"
 echo 'class Foo { }' > "$REPO/payment-service/src/Foo.java"
@@ -318,6 +329,29 @@ public class CheckstyleCleanFixture {
 }
 EOF
 record "편집린트: 위반이 없는 Java 파일은 통과한다 (FS-9)" "0" "$(run_lint "$PROJECT_DIR" "$FIXTURE_DIR/CheckstyleCleanFixture.java")"
+
+# FS-9(코틀린): 실제 ktlint 설정(.editorconfig)으로 위반은 막고 깨끗한 파일은 통과시킨다
+ensure_ktlint_ready() {
+    local cp_file="$PROJECT_DIR/product-service/build/ktlint-cli-classpath.txt"
+    if [ "$PROJECT_DIR/product-service/build.gradle.kts" -nt "$cp_file" ] || [ ! -s "$cp_file" ]; then
+        echo "ktlint CLI classpath 준비 중 (writeKtlintCliClasspath)..." >&2
+        (cd "$PROJECT_DIR" && ./gradlew -q :product-service:writeKtlintCliClasspath) > "$TMPROOT/gradle-prep-ktlint.log" 2>&1
+    fi
+    [ -s "$cp_file" ]
+}
+if ! ensure_ktlint_ready; then
+    cat "$TMPROOT/gradle-prep-ktlint.log" >&2 2>/dev/null || true
+    echo "ktlint 검사기가 준비되지 않았다. 위반 판정 케이스를 건너뛰지 않고 테스트를 실패로 끝낸다." >&2
+    exit 1
+fi
+printf 'package fixture\n\nfun probe(value:Int) = value\n' > "$FIXTURE_DIR/KtlintGuardrailFixture.kt"
+record "편집린트: 위반이 있는 Kotlin 파일은 막는다 (FS-9)" "2" "$(run_lint "$PROJECT_DIR" "$FIXTURE_DIR/KtlintGuardrailFixture.kt")"
+if grep -q "standard:" "$TMPROOT/lint-stderr.txt"; then MSG=있음; else MSG=없음; fi
+record "편집린트: Kotlin 차단 메시지에 위반 규칙이 있다 (FS-9)" "있음" "$MSG"
+printf 'package fixture\n\nfun probe(value: Int) = value\n' > "$FIXTURE_DIR/KtlintCleanFixture.kt"
+record "편집린트: 위반이 없는 Kotlin 파일은 통과한다 (FS-9)" "0" "$(run_lint "$PROJECT_DIR" "$FIXTURE_DIR/KtlintCleanFixture.kt")"
+printf 'val probe = listOf(1,2)\n' > "$FIXTURE_DIR/guardrail.gradle.kts"
+record "편집린트: 위반이 있는 Kotlin 스크립트(.kts)는 막는다 (FS-9)" "2" "$(run_lint "$PROJECT_DIR" "$FIXTURE_DIR/guardrail.gradle.kts")"
 
 # ── 결과 ─────────────────────────────────────────────────────────────────────
 echo
