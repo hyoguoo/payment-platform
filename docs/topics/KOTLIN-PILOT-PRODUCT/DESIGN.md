@@ -32,23 +32,32 @@
 
 ## 확정 메시지 필드별 처리
 
-`StockCommittedMessage`(`StockCommittedMessage.java:25-32`)의 6개 필드다. "자바 현재 결과"는 코드를 읽고 정한 예상이며, 이관 전에 특성 테스트(D11)로 확인해 이 표를 고친다.
+`StockCommittedMessage`(`StockCommittedMessage.java:25-32`)의 6개 필드다. "자바 현재 결과"는 T2 특성 테스트(`StockCommitMessageCompatibilityIntegrationTest`, 2026-11-22 자바 코드에서 12건 통과)로 확인한 결과다.
 
 | 필드 | 자바 타입 | 자바 현재 결과(null 또는 누락) | 코틀린 선언과 처리 |
 |---|---|---|---|
-| `productId` | `Long` | `StockCommitConsumer.java:72`에서 unboxing NPE. 재시도 대상이라 (max-attempts+1)회 호출 뒤 원본 키로 격리 | `Long?`, 넘길 때 `!!`(NPE로 같은 재시도 분류) |
-| `qty` | `int` | 미확인. Jackson 기본값이면 0으로 들어와 재고가 그대로인 채 중복 판정 행만 남는다 | 특성 테스트 결과에 맞춘다(`Int` 기본값 0 등) |
-| `idempotencyKey` | `String` | 미확인(사전 점검 추정): `INSERT IGNORE`가 NOT NULL 기본 키에 NULL 대신 `''`를 넣어 첫 건은 차감하고, 이후 8일간 키가 null인 메시지는 모두 중복으로 무시된다 | `String?`. 자바 결과를 그대로 지킨다(BRIEF 질문 8-A). 결함은 TODOS `STOCK-COMMIT-NULL-KEY` |
-| `occurredAt` | `Instant` | `expiresAt` 대체값 계산에서 `now`를 쓴다 | `Instant?` |
-| `orderId` | `String` | 빈 문자열로 대체 | `String?`, `?: ""` |
-| `expiresAt` | `Instant` | `occurredAt + 8일`, 없으면 `now + 8일` | `Instant?` |
+| `productId` | `Long` | 유스케이스를 부르기 전 `StockCommitConsumer`에서 unboxing NPE. 원인 예외 `NullPointerException`(재시도 대상)으로 재시도 뒤 원본 Kafka 키로 격리. 중복 판정 행 없음 | `Long?`, 넘길 때 `!!`(NPE로 같은 재시도 분류) |
+| `qty` | `int` | null·누락 모두 0으로 들어온다. 유스케이스가 `qty=0`으로 한 번 불리고, 재고는 그대로, 중복 판정 행이 남고, 격리되지 않는다 | `Int`에 기본값 0(누락), null도 0이 되도록 맞춘다. 결과는 T2 테스트로 확인 |
+| `idempotencyKey` | `String` | null·누락 모두 유스케이스에 null로 넘어가고 중복 판정 행이 `''` 키로 저장된다. 같은 상품에 null 키 메시지 2건이면 첫 건만 차감되고 두 번째는 중복으로 무시된다 | `String?`. 자바 결과를 그대로 지킨다(BRIEF 질문 8-A). 결함은 TODOS `STOCK-COMMIT-NULL-KEY` |
+| `occurredAt` | `Instant` | null이면 만료 시각이 수신 시각 + 8일 | `Instant?` |
+| `orderId` | `String` | null·누락이면 빈 문자열로 유스케이스에 넘어간다 | `String?`, `?: ""` |
+| `expiresAt` | `Instant` | null·누락이면 `occurredAt + 8일`, `occurredAt`도 없으면 수신 시각 + 8일 | `Instant?` |
+
+메시지 자체에 대한 결과:
+
+| 상황 | 자바 현재 결과 |
+|---|---|
+| 모르는 필드가 있음 | 무시하고 정상 차감(Boot ObjectMapper가 모르는 필드에서 실패하지 않음) |
+| 값이 null인 레코드 | 유스케이스를 부르지 않고 원인 예외 `MethodArgumentNotValidException`으로 원본 Kafka 키로 격리. 중복 판정 행 없음 |
+| 재고 행 없음 | 원인 예외 `IllegalStateException`, 재시도 뒤 격리, 중복 판정 행 롤백 |
+| 재고 부족 | 원인 예외 `ProductStockException`, 재시도 없이 격리, 중복 판정 행 롤백, 재고 그대로 |
 
 재시도 분류는 두 곳에서 정해진다. 코틀린 표현이 던지는 예외가 어느 쪽에 걸리는지에 따라 호출 횟수와 격리 시점이 바뀐다.
 
 | 예외 | 나오는 곳 | 분류 |
 |---|---|---|
 | `MessageConversionException`, `IllegalArgumentException`, `ProductStockException` | `KafkaErrorHandlerConfig.java:83-87` 명시 목록. non-null 필드 역직렬화 실패, `require`·`requireNotNull` | 재시도 없이 격리 |
-| Spring Kafka 기본 제외 목록(ConversionException 등) | `DefaultErrorHandler` 기본값(미확인: 목록 내용은 테스트로 확인) | 재시도 없이 격리 |
+| `DeserializationException`, `MessageConversionException`, `ConversionException`, `MethodArgumentResolutionException`(빈 값 레코드의 `MethodArgumentNotValidException` 포함), `NoSuchMethodException`, `ClassCastException` | Spring Kafka 3.3.4 `ExceptionClassifier.defaultFatalExceptionsList()`(소스 확인) | 재시도 없이 격리 |
 | `NullPointerException`(`!!`), `IllegalStateException`(`check`, `error`, 재고 행 없음) | 그 밖 | 재시도 후 격리 |
 
 ## 확인한 라이브러리 동작
@@ -112,7 +121,7 @@ flowchart TD
 | FS-2 | 재고보다 큰 수량의 확정 메시지 | 저장하지 않고 재시도 없이 격리 토픽으로 간다. 키는 `orderId:productId` | INV-5 | `StockCommitQuarantineIntegrationTest` #1, `KafkaErrorHandlerConfigTest`, 판정 4 |
 | FS-3 | 차감이 실패한다(재고 행 없음, 재고 부족) | 중복 판정 기록도 롤백되어 재시도가 다시 차감을 시도한다. 롤백이 빠지면 두 번째 시도가 "중복"으로 끝나 격리되지 않는다. 클래스가 final이면 CGLIB 프록시를 못 만들어 컨텍스트 기동이 실패하고, 메서드만 final이면 프록시의 빈 필드로 NPE가 난다(조용히 빠지지 않음) | INV-5 | 격리 통합 테스트 #2(`:180-181` 격리 단언), 같은 테스트에 실패 뒤 `stock_commit_dedupe` 행 없음 단언 추가 |
 | FS-4 | 구버전 producer가 `expiresAt`·`occurredAt`·`orderId`를 null로 보내거나 빠뜨린다 | 역직렬화 성공, 기존 대체값 계산(`occurredAt + 8일`, 없으면 `now + 8일`, `orderId`는 빈 문자열) | INV-5 | 격리 통합 테스트에 시나리오 추가(D11의 4가지 단언) |
-| FS-5 | `productId`가 null이거나 빠진다 | 자바 기준: NPE로 재시도하고 소진 뒤 원본 키로 격리 | INV-5 | 격리 통합 테스트에 시나리오 추가(`atLeast(2)` 호출, 격리 키) |
+| FS-5 | `productId`가 null이거나 빠진다 | 자바 기준: NPE로 재시도하고 소진 뒤 원본 키로 격리 | INV-5 | T2 특성 테스트(유스케이스 미호출, 원본 키 격리, 원인 예외 `NullPointerException`. 유스케이스를 부르기 전에 실패해 호출 횟수로는 재시도를 셀 수 없어 원인 예외로 재시도 분류를 고정한다) |
 | FS-5b | `qty`가 빠지거나 null이다 | 이관 전 자바 동작과 같다(특성 테스트로 먼저 고정) | INV-5 | 격리 통합 테스트에 시나리오 추가 |
 | FS-12 | `idempotencyKey`가 null이거나 빠진다 | 이관 전 자바와 같다(BRIEF 질문 8-A). 특성 테스트로 확인한 자바 결과를 그대로 단언한다 | INV-5 | 격리 통합 테스트: 같은 상품 2건을 보내 재고, 중복 판정 행, 격리 여부 단언 |
 | FS-13 | payload에 모르는 필드가 있다(producer가 먼저 배포된 경우) | 무시하고 정상 차감한다. 변환기가 Boot ObjectMapper(모르는 필드 무시)를 계속 쓴다 | INV-5 | 격리 통합 테스트: 추가 필드가 있는 payload로 재고 감소 단언 |
@@ -176,7 +185,7 @@ implementer 후보: T6(hook·stack.md), T7(CI). 쓰기 범위가 product-service
   - 검증: `uv run scripts/check-agent-docs.py --strict`
   - tdd: false | risk: false | 담당: 메인
   - 결과: `.agents/profiles/risk.md:48` 패턴 한 개만 바꿈. `check-agent-docs.py --strict` 이번 변경으로 생긴 문제 0건(기존 Mermaid 금지 문자 17건은 workflow 스킬 문서의 것)
-- [ ] **T2: 재고 확정 메시지 특성 테스트(자바, 통합)**
+- [x] **T2: 재고 확정 메시지 특성 테스트(자바, 통합)**
   - 변경 위치: `product-service/src/test/.../integration/` (격리 통합 테스트와 같은 설정의 새 테스트 클래스)
   - 의존: 없음
   - 완료 기준: MySQL·EmbeddedKafka·Boot ObjectMapper로 시나리오마다 `commit` 호출 횟수, 격리 토픽 도달과 키, 재고, `stock_commit_dedupe` 행을 단언한다 (R4, R5, D11)
@@ -190,7 +199,11 @@ implementer 후보: T6(hook·stack.md), T7(CI). 쓰기 범위가 product-service
     - 테스트 결과로 "확정 메시지 필드별 처리" 표의 미확인 칸을 고친다
   - 검증: `./gradlew :product-service:integrationTest`, 그룹별 동작을 깨뜨려 실패 확인 후 되돌림, `checkstyleTest`
   - tdd: false(특성 테스트) | risk: false | 담당: 메인
-  - 결과:
+  - 결과: `StockCommitMessageCompatibilityIntegrationTest` 새로 추가(12건). 격리 시나리오는 격리 메시지의 원인 예외 헤더(`kafka_dlt-exception-cause-fqcn`)까지 단언해 재시도 분류를 고정했다. 결과로 "확정 메시지 필드별 처리" 표를 확인된 값으로 바꿨다
+    - 검출력: `orderId` 대체값 변경, `@Transactional` 제거, `productId` null 때 `IllegalArgumentException` 던지기를 한꺼번에 넣자 FS-4 2건, FS-3 2건, FS-5 2건이 실패. 되돌린 뒤 main diff 없음 확인
+    - 검사: `./gradlew :product-service:integrationTest :product-service:test :product-service:checkstyleTest` 통과(통합 24건, 단위 70건, 실패 0)
+    - 처음 실행에서 FS-4 2건이 9시간 차이로 실패했다. 저장소는 UTC 달력으로 쓰는데 테스트가 JVM 기본 시간대로 읽은 탓이라 테스트를 UTC 달력으로 고쳤다
+    - 변이 확인 중 `verify-pause.sh` 실행이 권한 분류기에 막혀 일시정지 없이 같은 턴 안에 되돌렸다
 - [ ] **T3: HTTP 특성 테스트(자바)**
   - 변경 위치: `product-service/src/test/.../presentation/`
   - 의존: 없음
