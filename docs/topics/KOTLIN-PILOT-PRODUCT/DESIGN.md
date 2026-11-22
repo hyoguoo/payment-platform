@@ -12,7 +12,7 @@
 | D3 | Kotlin 2.4.21. product-service `build.gradle.kts`에서 `extra["kotlin.version"] = "2.4.21"`로 Spring Boot BOM의 관리 버전(1.9.25)을 덮어쓴다 | 2026-11 기준 최신 안정판. 스파이크(아래 "확인한 라이브러리 동작")에서 Boot 3.4.4·Jackson 2.18.3·springmockk 4.0.2와 함께 동작 확인 | BOM 기본 1.9.25(K2 컴파일러 이전 세대), 2.5.0-RC(RC를 빌드에 씀) | 제안 |
 | D4 | detekt 1.23.8(안정판). detekt 설정의 Kotlin 의존을 `getSupportedKotlinVersion()`(2.0.21)으로 고정하고, 타입 분석이 필요한 `detektMain`·`detektTest`는 게이트에 넣지 않는다. 게이트는 `detekt` 태스크 | 1.23.8은 Kotlin 2.0.21로 빌드됐고 2.4.21과 섞이면 실행을 거부한다. 고정하면 소스 규칙은 돈다(스파이크 확인) | detekt 2.0.0-alpha.6(Kotlin 2.4.10 기반, 알파를 빌드 게이트에 씀), Kotlin을 2.0.21로 낮춤(D3와 충돌) | 제안 |
 | D5 | ktlint는 `org.jlleitschuh.gradle.ktlint` 14.2.0 + ktlint 1.8.0. ktlint 설정도 BOM의 Kotlin 버전 덮어쓰기에서 뺀다. 줄 길이 120은 루트 `.editorconfig`로 정한다 | BOM이 ktlint 실행용 Kotlin 컴파일러까지 2.4.21로 바꿔 파싱이 실패한다(스파이크 확인) | ktlint CLI만 쓰기(Gradle 게이트 없음) | 개발자 답변(질문 3) + 제안(버전) |
-| D6 | 기존 Checkstyle 규칙의 코틀린 대응: 줄 길이 120 → ktlint, `var` 지역 변수 금지 → detekt `VarCouldBeVal`, 광범위 예외 삼킴(커스텀 Check) → detekt `TooGenericExceptionCaught`·`SwallowedException`, try 밖 변수 재할당(커스텀 Check) → 대응 규칙 없음, 코틀린 `try` 식으로 쓴다, `@Data`·`return null` 금지 → 코틀린에 해당 없음 | 규칙마다 같은 목적을 지킬 수단이 있다. try 밖 재할당만 규칙이 사라진다 | detekt 커스텀 규칙 작성(이번 범위 대비 과함) | 제안 |
+| D6 | 기존 Checkstyle 규칙의 코틀린 대응: 줄 길이 120 → ktlint·detekt `MaxLineLength`, 광범위 예외 삼킴(커스텀 Check) → detekt `TooGenericExceptionCaught`·`SwallowedException`, try 밖 변수 재할당(커스텀 Check) → 대응 규칙 없음, 코틀린 `try` 식으로 쓴다, `var` 지역 변수 금지·`@Data`·`return null` 금지 → 코틀린에 해당 없음. (T5에서 고침: 처음에는 `var` 금지를 detekt `VarCouldBeVal`로 대응시켰으나, 자바 규칙은 타입 추론 키워드를 막는 것이고 코틀린 `var`는 변경 가능 여부라 목적이 다르다. `VarCouldBeVal`은 타입 분석이 필요해 D4의 `detekt` 태스크에서는 돌지도 않는다) | 규칙마다 같은 목적을 지킬 수단이 있거나 코틀린 문법이 대신한다. try 밖 재할당만 규칙이 사라진다 | detekt 커스텀 규칙 작성(이번 범위 대비 과함) | 제안 |
 | D7 | 의도된 광범위 catch(`DedupeCleanupWorker.executeDeleteExpired`처럼 로그·카운터 후 다음 주기 재시도)는 `@Suppress("TooGenericExceptionCaught")`와 이유 주석으로 남긴다 | 현재 동작(R6, FS-8)을 바꾸지 않는다 | catch 타입을 좁힘(동작 변경) | 기존 규칙(현재 코드 동작) |
 | D8 | Java record 7개는 main 단계에서 `@JvmRecord data class`로 옮긴다. 자바 테스트가 부르는 static 멤버는 `const val`·`@JvmField`·`@JvmStatic`으로 노출한다. 테스트 이관 뒤 이 자바 호환 표기를 지운다 | 자바 테스트의 `getRecordComponents()`·`productId()` 호출과 static 접근을 그대로 두어 판정 1(객체 만드는 줄만 수정)을 지킨다. 자바 호출자가 없어지면 남길 이유가 없다 | 처음부터 일반 data class(자바 테스트 대량 수정), 호환 표기 유지(자바 호출자 없이 남음) | 승인된 브리핑(판정 1) + 제안(정리 시점) |
 | D9 | Lombok 빌더(`Stock.allArgsBuilder()` 등)는 주 생성자와 이름 붙인 인자로 바꾼다. 자바 테스트는 빌더 호출을 생성자 호출로만 고친다 | 판정 1 | 코틀린에 자바용 빌더 유지(이관 뒤 지울 코드) | 승인된 브리핑(판정 1) |
@@ -228,7 +228,7 @@ implementer 후보: T6(hook·stack.md), T7(CI). 쓰기 범위가 product-service
     - 결과: 단건 200·없는 상품 404, 결제 확정 202 → DONE 뒤 상품 1 재고 1 감소, 같은 확정 메시지 2회에 재고 10 → 8(중복 판정 행 1), 재고 부족 메시지는 `orderId:9902` 키로 격리되고 재고 유지, `smoke-all.sh --with-trace` 12단계 통과
     - 기동 절차: `bash scripts/compose-up.sh --mode fake` 뒤 docker 프로필은 시드를 막으므로 `V2__seed_product_stock.sql`을 mysql-product에 넣고 `bash scripts/seed-stock.sh`로 Redis 재고 캐시를 맞춘다. ship 비교도 같은 절차를 쓴다
     - 첫 실행에서 두 가지를 고쳤다(스크립트 결함): checkout 응답이 `data`로 감싸져 있어 `orderId`를 못 읽음, 확정 메시지의 `expiresAt`을 과거로 넣어 중복 판정 기록이 만료 삭제되고 두 번째 메시지도 차감됨(`recordIfAbsent`는 만료 기록을 지우고 다시 넣는다)
-- [ ] **T5: product-service 빌드를 `build.gradle.kts`로 바꾸고 Kotlin·ktlint·detekt를 건다**
+- [x] **T5: product-service 빌드를 `build.gradle.kts`로 바꾸고 Kotlin·ktlint·detekt를 건다**
   - 변경 위치: `product-service/build.gradle` → `build.gradle.kts`, 루트 `.editorconfig`(새 파일), `config/detekt/detekt.yml`(새 파일)
   - 의존: 없음
   - 완료 기준: 자바 코드 그대로 빌드·테스트가 이관 전과 같다. Kotlin 2.4.21(`kotlin-jvm`, `kotlin-spring`, `kotlin-jpa`, `allOpen`), `-Xjsr305=strict`, main 경고를 오류로, `jackson-module-kotlin`·`kotlin-reflect`·MockK·springmockk 추가, detekt·ktlint 실행용 Kotlin 고정, Checkstyle 규칙 대응(D6) (R7, R8, D3~D6, D12, D13)
@@ -236,7 +236,11 @@ implementer 후보: T6(hook·stack.md), T7(CI). 쓰기 범위가 product-service
     - `bootJar` 산출물 이름과 개수가 이관 전과 같다(Dockerfile `COPY build/libs/*.jar`)
   - 검증: `./gradlew :product-service:test :product-service:checkstyleMain :product-service:checkstyleTest :product-service:spotbugsMain :product-service:spotbugsTest :product-service:ktlintCheck :product-service:detekt :product-service:bootJar`, 루트 `build.gradle` diff 없음
   - tdd: false | risk: false | 담당: 메인
-  - 결과:
+  - 결과: `product-service/build.gradle` → `build.gradle.kts`, 루트 `.editorconfig`(ktlint_official, 줄 길이 120), `config/detekt/detekt.yml`(`maxIssues: 0`) 추가. 루트 `build.gradle`·`settings.gradle` diff 없음
+    - 게이트 확인(확인용 코틀린 파일을 넣었다 지움): ktlint 형식 위반 → 실패, detekt `MaxLineLength`·`TooGenericExceptionCaught`·`SwallowedException` → 실패, 폐기 예정 API 사용 경고 → 컴파일 실패(`-Werror`). K2 컴파일러는 미사용 지역 변수를 경고로 내지 않는다
+    - D6 수정: `var` 금지 → `VarCouldBeVal` 대응을 뺐다(목적이 다르고, 타입 분석이 필요해 `detekt` 태스크에서 돌지 않음)
+    - 발견과 처리: 코틀린 플러그인이 테스트 컴파일에 main jar를 연결해 테스트만 돌려도 `-plain.jar`가 `build/libs`에 생겼다(자바 서비스는 생기지 않음). Dockerfile `COPY build/libs/*.jar app.jar`가 jar 두 개에서 깨질 수 있어 plain jar 출력 위치를 `build/libs-plain`으로 옮겼다. `clean` 뒤 테스트·`bootJar` 후 `build/libs`에 jar 하나만 있음을 확인
+    - 검사: `test`(70건), `integrationTest`(41건), `checkstyleMain`·`checkstyleTest`·`spotbugsMain`·`spotbugsTest`·`ktlintCheck`·`detekt`(코틀린 소스 없음, 빌드 스크립트는 ktlint가 검사)·`bootJar`·`jacocoTestCoverageVerification` 통과
 - [ ] **T6: 편집·종료 hook과 stack.md에 코틀린 반영**
   - 변경 위치: `config/lint-file.sh`(새 파일), `product-service/build.gradle.kts`(ktlint CLI classpath 태스크), `.agents/profiles/stack.md`(버전 표, 정적 분석 명령, `verify-config`)
   - 의존: T5
