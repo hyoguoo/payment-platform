@@ -204,15 +204,20 @@ implementer 후보: T6(hook·stack.md), T7(CI). 쓰기 범위가 product-service
     - 검사: `./gradlew :product-service:integrationTest :product-service:test :product-service:checkstyleTest` 통과(통합 24건, 단위 70건, 실패 0)
     - 처음 실행에서 FS-4 2건이 9시간 차이로 실패했다. 저장소는 UTC 달력으로 쓰는데 테스트가 JVM 기본 시간대로 읽은 탓이라 테스트를 UTC 달력으로 고쳤다
     - 변이 확인 중 `verify-pause.sh` 실행이 권한 분류기에 막혀 일시정지 없이 같은 턴 안에 되돌렸다
-- [ ] **T3: HTTP 특성 테스트(자바)**
-  - 변경 위치: `product-service/src/test/.../presentation/`
+- [x] **T3: HTTP 특성 테스트(자바)**
+  - 변경 위치: `product-service/src/test/.../integration/ProductHttpContractIntegrationTest` (계획의 presentation 슬라이스 대신 통합 테스트로 바꿈. 아래 결과 참고)
   - 의존: 없음
   - 완료 기준: Boot Jackson 설정이 적용된 MockMvc로 단언한다 (R3, FS-7, FS-8)
     - 3개 엔드포인트 정상 응답 JSON 엄격 비교(필드 이름·순서·null 표기)
     - 없는 상품 404, 재고 부족, 잘못된 JSON, 본문 필드 누락·null, 페이지 파라미터 경계(음수, 0, 101)의 상태 코드와 오류 응답
   - 검증: `./gradlew :product-service:test`, 응답 필드 하나를 바꿔 실패 확인 후 되돌림, `checkstyleTest`
   - tdd: false(특성 테스트) | risk: false | 담당: 메인
-  - 결과:
+  - 결과: `ProductHttpContractIntegrationTest` 새로 추가(17건). `@SpringBootTest` + MockMvc + MySQL로 응답 본문을 문자열 그대로 비교한다
+    - 슬라이스 대신 통합 테스트로 쓴 이유: null 항목이 섞인 차감 요청은 자바에서는 서비스 안에서, 코틀린에서는 역직렬화에서 실패할 수 있다. 응답이 같아도 앞 항목 롤백 여부는 DB로만 확인된다
+    - 고정한 자바 동작: 단건·목록 응답 본문(가격 `1000.00` 표기, 재고 행 없으면 `stock` 0), 없는 상품 404 `E01003`, 숫자 아닌 id·size·잘못된 JSON·배열 아닌 본문은 500 `PRODUCT_INTERNAL_ERROR`, 차감 실패(재고 부족 500, 없는 상품 404, productId null 500, stock 누락 500) 때 앞 항목까지 롤백, 음수 수량은 재고를 늘림
+    - 검출력: 응답 필드 순서 바꾸기와 차감 `@Transactional` 제거를 넣자 본문 비교 4건, 롤백 4건이 실패. 되돌린 뒤 main diff 없음
+    - 검사: `./gradlew :product-service:integrationTest :product-service:test :product-service:checkstyleTest` 통과(통합 41건, 단위 70건, 실패 0)
+    - 범위 밖 발견: 차감 API 입력 검증 없음 → TODOS `STOCK-DECREASE-INPUT-VALIDATION`
 - [ ] **T4: 이관 전 로컬 스택 기준선 기록**
   - 변경 위치: `docs/topics/KOTLIN-PILOT-PRODUCT/baseline/` (비교 스크립트와 결과)
   - 의존: 없음

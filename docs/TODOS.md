@@ -28,6 +28,7 @@
 | T4-D | CircuitBreaker와 타임아웃 튜닝 | 부하 측정 | [아래](#t4-d--circuitbreaker와-타임아웃-튜닝) |
 | T4-E | scale-out 후속: payment 무중단 재시작, 재고 갭 관찰 | 멀티 인스턴스 | [아래](#t4-e--scale-out-후속) |
 | STOCK-COMMIT-NULL-KEY | 재고 확정 메시지의 `idempotencyKey`가 null이면 이후 8일간 null 키 메시지가 모두 중복으로 무시되는 것으로 보인다 | 없음 | product-service `JdbcEventDedupeStore`의 `INSERT IGNORE`가 NOT NULL 기본 키(`stock_commit_dedupe.event_uuid`)에 NULL 대신 ``를 넣는 것으로 추정한다(KOTLIN-PILOT-PRODUCT 사전 점검). 정상 발행 경로는 키를 항상 UUID로 채워 생기지 않는다. 코틀린 이관은 이 동작을 그대로 지키기로 했다. 즉시 격리로 바꿀지 따로 정한다 |
+| STOCK-DECREASE-INPUT-VALIDATION | product `POST /api/v1/products/stock/decrease`에 입력 검증이 없다 | 없음 | 음수 수량을 보내면 재고가 늘어난다. 잘못된 JSON, 배열이 아닌 본문, 숫자가 아닌 경로·쿼리 파라미터는 `GlobalExceptionHandler`의 `RuntimeException` 처리로 400이 아니라 500 `PRODUCT_INTERNAL_ERROR`가 된다. 저장소 안에 이 API를 부르는 곳은 없다. KOTLIN-PILOT-PRODUCT 특성 테스트(`ProductHttpContractIntegrationTest`)가 지금 동작을 고정하므로, 고칠 때 테스트 기대값도 함께 바꾼다 |
 | CONFIRM-TERMINAL-REJECT | 종결·격리된 결제에 늦은 confirm 재요청이 오면 재고 차감이 먼저 일어난다 | 없음 | `PaymentEvent.validateConfirmRequest`는 사용자·금액·주문번호·paymentKey만 검사하고 상태를 보지 않는다. 진입에 종결·격리 상태 조기 거부 가드를 둔다. 지금은 차감이 선차감 기록 회수 작업(기본 60초 주기)으로 되돌려지지만 그 사이 게이트가 빡빡하다 |
 | TQ-1 | DLQ 조건부 자동 재시도 | 없음 | 관리자 수동 재주입은 있다(`payment.events.confirmed.dlq`). 벤더 5xx 같은 일시 실패를 자동으로 재발행하는 상시 컨슈머는 없다. 상세: `docs/archive/dlq-quarantine-recovery/COMPLETION-BRIEFING.md` |
 | TQ-2 | 승인으로 확인된 격리 결제를 `DONE`으로 되살리는 경로 | 없음 | 격리 결제는 관리자 안전 실패 종결만 있다. 되살리려면 payment→pg 상태 조회, 재고 원장 재기록(stock-committed 재발행, Redis 재정렬), 동시성 처리가 먼저 필요하다 |
