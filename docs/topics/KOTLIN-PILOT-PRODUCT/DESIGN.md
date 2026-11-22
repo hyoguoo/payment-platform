@@ -161,7 +161,119 @@ D8의 자바 호환 표기 정리(`@JvmRecord` 제거 등)는 Jackson 역직렬�
 
 ## 태스크
 
-plan에서 채운다.
+순서: 핵심 경로 패턴(T1) → 이관 전 동작 고정(T2~T4) → 빌드·도구(T5~T7) → main 이관(T8~T11) → 테스트 이관(T12) → 정리(T13).
+코틀린과 자바는 한 모듈 안에서 서로 부를 수 있으므로, main은 다른 코드가 의존하는 쪽(도메인·DTO)부터 옮긴다. 태스크마다 전체 테스트가 통과한 상태로 끝낸다.
+판정 4의 이관 후 비교는 ship 전체 검증에서 T4의 기준선과 같은 방법으로 한다.
+
+특성 테스트(T2, T3)는 지금 동작을 고정하는 테스트라 자바 코드에서 처음부터 통과한다. 그래서 "실패를 먼저 확인"하는 대신, 그룹마다 지키려는 동작을 일부러 깨뜨려(예: `orderId` 대체값 제거) 테스트가 실패하는지 한 번 확인하고 되돌린다.
+
+implementer 후보: T6(hook·stack.md), T7(CI). 쓰기 범위가 product-service와 겹치지 않는다.
+
+- [x] **T1: risk.md 핵심 경로의 product `*Stock*` 패턴을 kotlin 경로까지 넓힘**
+  - 변경 위치: `.agents/profiles/risk.md`
+  - 의존: 없음
+  - 완료 기준: `product-service/src/main/{java,kotlin}/**/*Stock*`로 바뀌고 다른 패턴은 그대로다 (D19)
+  - 검증: `uv run scripts/check-agent-docs.py --strict`
+  - tdd: false | risk: false | 담당: 메인
+  - 결과: `.agents/profiles/risk.md:48` 패턴 한 개만 바꿈. `check-agent-docs.py --strict` 이번 변경으로 생긴 문제 0건(기존 Mermaid 금지 문자 17건은 workflow 스킬 문서의 것)
+- [ ] **T2: 재고 확정 메시지 특성 테스트(자바, 통합)**
+  - 변경 위치: `product-service/src/test/.../integration/` (격리 통합 테스트와 같은 설정의 새 테스트 클래스)
+  - 의존: 없음
+  - 완료 기준: MySQL·EmbeddedKafka·Boot ObjectMapper로 시나리오마다 `commit` 호출 횟수, 격리 토픽 도달과 키, 재고, `stock_commit_dedupe` 행을 단언한다 (R4, R5, D11)
+    - FS-3: 재고 행 없음·재고 부족 뒤 중복 판정 행이 남지 않는다
+    - FS-4: `occurredAt`·`expiresAt`·`orderId`가 null이거나 빠진 메시지가 차감되고 대체 만료 시각이 저장된다
+    - FS-5: `productId` null·누락 메시지가 재시도 뒤 원본 키로 격리된다
+    - FS-5b: `qty` null·누락 메시지의 자바 결과
+    - FS-12: `idempotencyKey` null·누락 메시지 2건(같은 상품)의 자바 결과
+    - FS-13: 모르는 필드가 있는 메시지가 차감된다
+    - FS-14: 값이 null인 레코드의 자바 결과
+    - 테스트 결과로 "확정 메시지 필드별 처리" 표의 미확인 칸을 고친다
+  - 검증: `./gradlew :product-service:integrationTest`, 그룹별 동작을 깨뜨려 실패 확인 후 되돌림, `checkstyleTest`
+  - tdd: false(특성 테스트) | risk: false | 담당: 메인
+  - 결과:
+- [ ] **T3: HTTP 특성 테스트(자바)**
+  - 변경 위치: `product-service/src/test/.../presentation/`
+  - 의존: 없음
+  - 완료 기준: Boot Jackson 설정이 적용된 MockMvc로 단언한다 (R3, FS-7, FS-8)
+    - 3개 엔드포인트 정상 응답 JSON 엄격 비교(필드 이름·순서·null 표기)
+    - 없는 상품 404, 재고 부족, 잘못된 JSON, 본문 필드 누락·null, 페이지 파라미터 경계(음수, 0, 101)의 상태 코드와 오류 응답
+  - 검증: `./gradlew :product-service:test`, 응답 필드 하나를 바꿔 실패 확인 후 되돌림, `checkstyleTest`
+  - tdd: false(특성 테스트) | risk: false | 담당: 메인
+  - 결과:
+- [ ] **T4: 이관 전 로컬 스택 기준선 기록**
+  - 변경 위치: `docs/topics/KOTLIN-PILOT-PRODUCT/baseline/` (비교 스크립트와 결과)
+  - 의존: 없음
+  - 완료 기준: 자바 product-service로 판정 4의 5개 시나리오를 실행하고 결과(응답 JSON, 재고 수치, 격리 토픽 메시지, 스모크 결과)를 파일로 남긴다. 같은 스크립트를 ship에서 다시 돌린다 (판정 4)
+  - 검증: 스크립트 실행 결과, `bash scripts/smoke-all.sh --with-trace`
+  - tdd: false | risk: false | 담당: 메인
+  - 결과:
+- [ ] **T5: product-service 빌드를 `build.gradle.kts`로 바꾸고 Kotlin·ktlint·detekt를 건다**
+  - 변경 위치: `product-service/build.gradle` → `build.gradle.kts`, 루트 `.editorconfig`(새 파일), `config/detekt/detekt.yml`(새 파일)
+  - 의존: 없음
+  - 완료 기준: 자바 코드 그대로 빌드·테스트가 이관 전과 같다. Kotlin 2.4.21(`kotlin-jvm`, `kotlin-spring`, `kotlin-jpa`, `allOpen`), `-Xjsr305=strict`, main 경고를 오류로, `jackson-module-kotlin`·`kotlin-reflect`·MockK·springmockk 추가, detekt·ktlint 실행용 Kotlin 고정, Checkstyle 규칙 대응(D6) (R7, R8, D3~D6, D12, D13)
+    - ktlint·detekt에 위반 코드를 일부러 넣으면 빌드가 실패한다(확인 후 되돌림)
+    - `bootJar` 산출물 이름과 개수가 이관 전과 같다(Dockerfile `COPY build/libs/*.jar`)
+  - 검증: `./gradlew :product-service:test :product-service:checkstyleMain :product-service:checkstyleTest :product-service:spotbugsMain :product-service:spotbugsTest :product-service:ktlintCheck :product-service:detekt :product-service:bootJar`, 루트 `build.gradle` diff 없음
+  - tdd: false | risk: false | 담당: 메인
+  - 결과:
+- [ ] **T6: 편집·종료 hook과 stack.md에 코틀린 반영**
+  - 변경 위치: `config/lint-file.sh`(새 파일), `product-service/build.gradle.kts`(ktlint CLI classpath 태스크), `.agents/profiles/stack.md`(버전 표, 정적 분석 명령, `verify-config`)
+  - 의존: T5
+  - 완료 기준: `.kt`·`.kts` 편집 직후 ktlint가 그 파일만 검사하고, `.java`는 지금처럼 Checkstyle이 검사한다. 종료 hook이 `.kt` 변경을 검증 대상으로 본다 (R7, D15, D16)
+  - 검증: `bash scripts/test-hooks.sh`, `bash -n config/lint-file.sh`, 위반 있는·없는 `.kt`와 `.java`로 분배 스크립트 종료 코드 확인, `uv run scripts/check-agent-docs.py --strict`
+  - tdd: true(hook 회귀 검사에 `.kt` 케이스 추가) | risk: false | 담당: 메인 또는 implementer
+  - 결과:
+- [ ] **T7: CI에 product-service 코틀린 정적 분석 단계 추가**
+  - 변경 위치: `.github/workflows/_service-ci.yml`, `.github/workflows/ci.yml`
+  - 의존: T5
+  - 완료 기준: 입력 `kotlin-lint`(기본 false)가 true일 때만 `ktlintCheck`·`detekt`가 돌고, 결과가 reviewdog checkstyle 경로로 올라가며, lint 게이트 판정에 들어간다. product job만 true다 (R7, D17)
+  - 검증: YAML 문법 검사(`actionlint`가 있으면 그것, 없으면 `python3 -c "import yaml"` 파싱), 다른 서비스 job의 단계가 그대로인지 diff 확인. 실제 실행은 푸시 승인 뒤
+  - tdd: false | risk: false | 담당: 메인 또는 implementer
+  - 결과:
+- [ ] **T8: 도메인·예외·DTO·로그 유틸을 코틀린으로**
+  - 변경 위치: `product/domain/*`, `product/exception/**`, `product/application/dto/*`, `product/presentation/dto/*`, `product/core/common/log/*`
+  - 의존: T2, T3, T5
+  - 완료 기준: record는 `@JvmRecord data class`, Lombok 빌더는 주 생성자, 자바 테스트는 빌더 호출만 생성자 호출로 바꾼다. `ProductStockException.of` 같은 static 접근은 `@JvmStatic`으로 유지한다 (R1, R3, D8, D9, D21)
+  - 검증: `./gradlew :product-service:test :product-service:integrationTest`, `ktlintCheck`, `detekt`, `spotbugsMain`, `checkstyleTest`, 자바 테스트 diff가 객체 생성 줄뿐인지 확인
+  - tdd: false(기존·특성 테스트가 명세) | risk: true(`Stock`) | 담당: 메인
+  - 결과:
+- [ ] **T9: 유스케이스·포트·컨트롤러를 코틀린으로**
+  - 변경 위치: `product/application/port/**`, `product/application/usecase/*`, `product/presentation/**`
+  - 의존: T8
+  - 완료 기준: `@Transactional` 경계, 처리 순서, 예외 타입이 같다. null 처리에 `requireNotNull`·`?: return`을 쓰지 않는다 (R3, R4, R5, D10, FS-1~3)
+  - 검증: T8과 같음
+  - tdd: false | risk: true | 담당: 메인
+  - 결과:
+- [ ] **T10: 영속성(엔티티·저장소·중복 판정 저장소)을 코틀린으로**
+  - 변경 위치: `product/infrastructure/entity/*`, `product/infrastructure/repository/*`, `product/infrastructure/idempotency/*`
+  - 의존: T9
+  - 완료 기준: 엔티티는 일반 class, 스키마 검증(`ddl-auto=validate`) 통과, `INSERT IGNORE`·만료 행 삭제 SQL 그대로 (R5, R6, D12, FS-3, FS-12)
+  - 검증: T8과 같음
+  - tdd: false | risk: true | 담당: 메인
+  - 결과:
+- [ ] **T11: 메시징·설정·스케줄러·메트릭·애플리케이션 진입점을 코틀린으로, Lombok 제거**
+  - 변경 위치: `product/infrastructure/{messaging,config,scheduler,metrics}/**`, `ProductServiceApplication`, `product-service/build.gradle.kts`(Lombok 제외), `config/spotbugs/spotbugs-exclude*.xml`
+  - 의존: T10
+  - 완료 기준: `src/main/java`가 비고 Lombok이 classpath에 없다. 리스너는 non-null 파라미터의 동기 함수, 확정 메시지는 "필드별 처리" 표대로, 변환기는 Boot ObjectMapper를 쓴다. 의도된 광범위 catch는 `@Suppress`와 이유 주석. SpotBugs 오탐은 생성 메서드·패턴 단위로만 제외. 커버리지 97%가 떨어지면 멈추고 묻는다 (R1, R4~R7, D7, D10, D14, D18, D20, FS-4~6, FS-9~14)
+  - 검증: T8과 같음 + `dependencies --configuration compileClasspath`에 Lombok 없음, `find product-service/src/main/java -type f` 결과 없음, `jacocoTestCoverageVerification`
+  - tdd: false | risk: true | 담당: 메인
+  - 결과:
+- [ ] **T12: 테스트를 코틀린(MockK·springmockk)으로**
+  - 변경 위치: `product-service/src/test/java/**` → `src/test/kotlin/**`
+  - 의존: T11
+  - 완료 기준: 테스트 클래스·메서드 수와 시나리오가 이관 전과 같다. `src/test/java`가 빈다. 스키마 대조 테스트는 `primaryConstructor.parameters` 순서로 검사한다 (R2, m2)
+  - 검증: `./gradlew :product-service:test :product-service:integrationTest` 실행 건수가 T11 뒤와 같음, `ktlintCheck`, `detekt`, `spotbugsTest`
+  - tdd: false | risk: false | 담당: 메인
+  - 결과:
+- [ ] **T13: 자바 호환 표기 정리**
+  - 변경 위치: `@JvmRecord`·`@JvmStatic`·`@JvmField`를 쓴 main 파일
+  - 의존: T12
+  - 완료 기준: 자바 호출자가 없는 호환 표기가 없다. 정리 뒤 통합 테스트와 FS-4·5·5b·12·13·14가 다시 통과한다 (D8, m2)
+  - 검증: `./gradlew :product-service:test :product-service:integrationTest :product-service:ktlintCheck :product-service:detekt :product-service:spotbugsMain`, `grep -rn "@Jvm" product-service/src/main`
+  - tdd: false | risk: true | 담당: 메인
+  - 결과:
+
+요구사항·결정 대응: R1(T8~T11), R2(T12), R3(T3, T8, T9), R4(T2, T9, T11), R5(T2, T9, T10), R6(T10, T11, ship 판정 4), R7(T5~T7, T11), R8(T5). D1(순서 전체), D2(T8~T11), D3~D6·D12·D13(T5), D7·D10·D14·D18·D20·D22(T11), D8(T8, T13), D9(T8), D11(T2, T3), D15·D16(T6), D17(T7), D19(T1), D21(T8, T11).
 
 ## 리뷰 처리
 
