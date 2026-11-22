@@ -23,7 +23,6 @@ object LogFmt {
             .registerModule(JavaTimeModule())
             .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
 
-    @JvmStatic
     @Suppress("SwallowedException") // 로그 본문을 만드는 중 실패해도 로깅 자체는 이어가도록 대체 문구를 돌려준다
     fun toJson(value: Any?): String {
         if (value == null) {
@@ -38,7 +37,6 @@ object LogFmt {
 
     private fun normalizeSpace(str: String): String = if (str.isEmpty()) str else str.trim().replace(WHITESPACE, " ")
 
-    @JvmStatic
     fun info(
         logger: Logger,
         logDomain: LogDomain,
@@ -49,7 +47,6 @@ object LogFmt {
         }
     }
 
-    @JvmStatic
     fun info(
         logger: Logger,
         logDomain: LogDomain,
@@ -61,7 +58,6 @@ object LogFmt {
         }
     }
 
-    @JvmStatic
     fun warn(
         logger: Logger,
         logDomain: LogDomain,
@@ -72,7 +68,6 @@ object LogFmt {
         }
     }
 
-    @JvmStatic
     fun warn(
         logger: Logger,
         logDomain: LogDomain,
@@ -84,7 +79,6 @@ object LogFmt {
         }
     }
 
-    @JvmStatic
     fun error(
         logger: Logger,
         logDomain: LogDomain,
@@ -95,7 +89,6 @@ object LogFmt {
         }
     }
 
-    @JvmStatic
     fun error(
         logger: Logger,
         logDomain: LogDomain,
@@ -107,7 +100,6 @@ object LogFmt {
         }
     }
 
-    @JvmStatic
     fun debug(
         logger: Logger,
         logDomain: LogDomain,
@@ -118,7 +110,6 @@ object LogFmt {
         }
     }
 
-    @JvmStatic
     fun debug(
         logger: Logger,
         logDomain: LogDomain,
@@ -135,7 +126,6 @@ object LogFmt {
      *
      * CONVENTIONS: 기동 배너는 반드시 이 함수로만 허용한다. 직접 `log.warn("╔...")` 호출은 금지 — LogFmt 경유 필수.
      */
-    @JvmStatic
     fun banner(
         logger: Logger,
         level: Level,

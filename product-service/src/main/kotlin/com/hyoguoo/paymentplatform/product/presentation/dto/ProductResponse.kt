@@ -3,7 +3,6 @@ package com.hyoguoo.paymentplatform.product.presentation.dto
 import com.hyoguoo.paymentplatform.product.domain.Product
 import java.math.BigDecimal
 
-@JvmRecord
 data class ProductResponse(
     val id: Long,
     val name: String,
@@ -12,7 +11,6 @@ data class ProductResponse(
     val sellerId: Long,
 ) {
     companion object {
-        @JvmStatic
         fun from(product: Product): ProductResponse =
             ProductResponse(
                 id = product.id,

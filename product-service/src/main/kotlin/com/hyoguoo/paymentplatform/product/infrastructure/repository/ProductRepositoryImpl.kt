@@ -6,8 +6,8 @@ import com.hyoguoo.paymentplatform.product.domain.Product
 import com.hyoguoo.paymentplatform.product.infrastructure.entity.ProductEntity
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
+import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Repository
-import java.util.Optional
 
 /**
  * ProductRepository 포트 JPA 어댑터.
@@ -19,11 +19,9 @@ class ProductRepositoryImpl(
     private val jpaProductRepository: JpaProductRepository,
     private val jpaStockRepository: JpaStockRepository,
 ) : ProductRepository {
-    override fun findById(id: Long?): Optional<Product> {
-        val productId = requireNotNull(id) { "id 가 비어 있다" }
-        return jpaProductRepository
-            .findById(productId)
-            .map { product -> product.toDomain(fetchStockQuantity(productId)) }
+    override fun findById(id: Long): Product? {
+        val product = jpaProductRepository.findByIdOrNull(id) ?: return null
+        return product.toDomain(fetchStockQuantity(id))
     }
 
     override fun findPage(
@@ -40,11 +38,7 @@ class ProductRepositoryImpl(
         return ProductPage(content, page, size, productEntityPage.totalElements)
     }
 
-    private fun fetchStockQuantity(productId: Long): Int =
-        jpaStockRepository
-            .findById(productId)
-            .map { it.quantity }
-            .orElse(0)
+    private fun fetchStockQuantity(productId: Long): Int = jpaStockRepository.findByIdOrNull(productId)?.quantity ?: 0
 
     private fun fetchStockQuantities(products: List<ProductEntity>): Map<Long, Int> =
         jpaStockRepository

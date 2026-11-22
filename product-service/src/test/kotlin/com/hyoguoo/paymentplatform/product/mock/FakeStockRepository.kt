@@ -2,7 +2,6 @@ package com.hyoguoo.paymentplatform.product.mock
 
 import com.hyoguoo.paymentplatform.product.application.port.out.StockRepository
 import com.hyoguoo.paymentplatform.product.domain.Stock
-import java.util.Optional
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -14,10 +13,10 @@ import java.util.concurrent.ConcurrentHashMap
 class FakeStockRepository : StockRepository {
     private val store = ConcurrentHashMap<Long, Int>()
 
-    override fun findByProductId(productId: Long?): Optional<Stock> =
-        Optional
-            .ofNullable(productId?.let { store[it] })
-            .map { quantity -> Stock(productId!!, quantity) }
+    override fun findByProductId(productId: Long): Stock? {
+        val quantity = store[productId] ?: return null
+        return Stock(productId, quantity)
+    }
 
     override fun save(stock: Stock): Stock {
         store[stock.productId] = stock.quantity

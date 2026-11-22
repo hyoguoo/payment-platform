@@ -325,13 +325,16 @@ implementer 후보: T6(hook·stack.md), T7(CI). 쓰기 범위가 product-service
     - SpotBugs: T9·T10 임시 제외 2건을 지웠다. 대신 코틀린 테스트 바이트코드 오탐 135건(lateinit 초기화 검사, Intrinsics null 검사, 목 빈 접근자, 인라인된 `use`의 자원 반납 경로)을 product 패키지 `*Test` 클래스 + 패턴 8개로 제외했다. 메인이 제외를 잠시 빼고 돌려 패턴별로 분류해 확인했고, 자원 미반납 2건은 `use { }`가 닫는 코드라 오탐이다
     - detekt: 기본 설정이 테스트 경로를 이미 제외하는 규칙이 많아 `detekt.yml`은 바꾸지 않았다. 지적은 코드로 고쳤고 `@Suppress`는 `ArchitectureTest`(ArchUnit이 static 필드를 요구) 1곳
     - 절차상 제한: implementer가 코드 파일을 셸(heredoc)로 써서 편집 hook의 파일 단위 ktlint가 돌지 않았다. 모듈 전체 `ktlintCheck`·`detekt`로 대신 확인했다
-- [ ] **T13: 자바 호환 표기 정리**
+- [x] **T13: 자바 호환 표기 정리**
   - 변경 위치: `@JvmRecord`·`@JvmStatic`·`@JvmField`를 쓴 main 파일
   - 의존: T12
   - 완료 기준: 자바 호출자가 없는 호환 표기가 없다. 정리 뒤 통합 테스트와 FS-4·5·5b·12·13·14가 다시 통과한다 (D8, m2)
   - 검증: `./gradlew :product-service:test :product-service:integrationTest :product-service:ktlintCheck :product-service:detekt :product-service:spotbugsMain`, `grep -rn "@Jvm" product-service/src/main`
   - tdd: false | risk: true | 담당: 메인
-  - 결과:
+  - 결과: `@JvmRecord` 8곳, `@JvmStatic` 14곳, `@JvmField` 1곳을 지웠다(`grep -rn "@Jvm" product-service/src/main` 0건). T9에서 미룬 포트 정리도 했다: `StockRepository.findByProductId(Long): Stock?`, `ProductRepository.findById(Long): Product?`, 구현은 Spring Data `findByIdOrNull`, `JpaStockRepository.findByProductIdPessimistic`도 nullable 반환
+    - HTTP 재고 차감의 null `productId`는 저장소 대신 `StockCommandUseCase`의 `requireNotNull`에서 같은 IllegalArgumentException(500, 롤백)을 낸다. 재고 행 없음은 `error(...)`로 같은 IllegalStateException(재시도 뒤 격리)
+    - 테스트는 `Optional` 표현만 nullable로 바꿨다(Fake 1개, 테스트 4개). 시나리오와 기대값은 그대로
+    - 검사: `test` 70건, `integrationTest` 41건(record가 아닌 data class로도 HTTP 계약 17건·확정 메시지 호환 12건 통과), `ktlintCheck`, `detekt`, `spotbugsMain`·`spotbugsTest`, `jacocoTestCoverageVerification` 통과
 
 요구사항·결정 대응: R1(T8~T11), R2(T12), R3(T3, T8, T9), R4(T2, T9, T11), R5(T2, T9, T10), R6(T10, T11, ship 판정 4), R7(T5~T7, T11), R8(T5). D1(순서 전체), D2(T8~T11), D3~D6·D12·D13(T5), D7·D10·D14·D18·D20·D22(T11), D8(T8, T13), D9(T8), D11(T2, T3), D15·D16(T6), D17(T7), D19(T1), D21(T8, T11).
 
@@ -342,4 +345,5 @@ implementer 후보: T6(hook·stack.md), T7(CI). 쓰기 범위가 product-service
 
 ## 진행 기록
 
+- 2026-11-23: T1~T13 완료. 다음은 ship(리뷰, 이관 전후 로컬 스택 비교, 다른 5개 모듈 검사, 문서 동기화).
 - 2026-11-22: 사전 브리핑 승인. DESIGN 초안 작성, 도구 조합을 임시 프로젝트로 확인. risk-reviewer 사전 점검 대기.

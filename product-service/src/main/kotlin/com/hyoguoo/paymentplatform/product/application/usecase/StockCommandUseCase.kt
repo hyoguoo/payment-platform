@@ -37,8 +37,11 @@ class StockCommandUseCase(
         }
     }
 
+    /**
+     * productId 가 비어 있으면 IllegalArgumentException 으로 실패해 500 응답과 롤백으로 끝난다
+     * (이관 전 Spring Data 의 findById(null) 거부와 같은 결과).
+     */
     private fun loadStock(productId: Long?): Stock =
-        stockRepository
-            .findByProductId(productId)
-            .orElseThrow { ProductNotFoundException.of(ProductErrorCode.PRODUCT_NOT_FOUND) }
+        stockRepository.findByProductId(requireNotNull(productId) { "productId 가 비어 있다" })
+            ?: throw ProductNotFoundException.of(ProductErrorCode.PRODUCT_NOT_FOUND)
 }

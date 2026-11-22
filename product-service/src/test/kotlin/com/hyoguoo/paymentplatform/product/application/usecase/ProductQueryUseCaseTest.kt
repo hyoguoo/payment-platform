@@ -11,7 +11,6 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import java.math.BigDecimal
-import java.util.Optional
 
 @DisplayName("ProductQueryUseCase 테스트")
 class ProductQueryUseCaseTest {
@@ -30,7 +29,7 @@ class ProductQueryUseCaseTest {
         // given
         val productId = 1L
         val product = Product(productId, "테스트 상품", BigDecimal.valueOf(10000), "상품 설명", 50, 1L)
-        every { productRepository.findById(productId) } returns Optional.of(product)
+        every { productRepository.findById(productId) } returns product
 
         // when
         val result = sut.getById(productId)
@@ -46,7 +45,7 @@ class ProductQueryUseCaseTest {
     fun getById_whenProductNotFound_throwsProductNotFoundException() {
         // given
         val productId = 999L
-        every { productRepository.findById(productId) } returns Optional.empty()
+        every { productRepository.findById(productId) } returns null
 
         // when & then
         assertThatThrownBy { sut.getById(productId) }

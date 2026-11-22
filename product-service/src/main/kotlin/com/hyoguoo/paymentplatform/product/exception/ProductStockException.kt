@@ -6,7 +6,6 @@ class ProductStockException private constructor(
     val errorCode: ProductErrorCode,
 ) : RuntimeException(errorCode.message) {
     companion object {
-        @JvmStatic
         fun of(errorCode: ProductErrorCode): ProductStockException = ProductStockException(errorCode)
     }
 }

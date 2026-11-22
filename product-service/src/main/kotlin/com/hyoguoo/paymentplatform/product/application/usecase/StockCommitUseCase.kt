@@ -99,14 +99,10 @@ class StockCommitUseCase(
         orderId: String,
         eventUUID: String?,
     ) {
+        // 재고 행이 없으면 IllegalStateException(error) 으로 실패한다. 재시도 대상 예외라 재시도 뒤 격리된다.
         val current =
-            stockRepository
-                .findByProductId(productId)
-                .orElseThrow {
-                    IllegalStateException(
-                        "재고 정보를 찾을 수 없음 productId=$productId orderId=$orderId eventUUID=$eventUUID",
-                    )
-                }
+            stockRepository.findByProductId(productId)
+                ?: error("재고 정보를 찾을 수 없음 productId=$productId orderId=$orderId eventUUID=$eventUUID")
 
         val newQuantity = current.quantity - qty
         if (newQuantity < 0) {
@@ -129,7 +125,6 @@ class StockCommitUseCase(
          * StockCommitConsumer 의 expiresAt null fallback 계산에도 사용한다.
          * payment-service `EventDedupeStoreRedisAdapter` 의 P8D 와 정렬.
          */
-        @JvmField
         val DEDUPE_TTL: Duration = Duration.ofDays(8)
 
         private val log = LoggerFactory.getLogger(StockCommitUseCase::class.java)

@@ -15,7 +15,6 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
-import java.util.Optional
 
 @DisplayName("StockCommandUseCase 테스트")
 class StockCommandUseCaseTest {
@@ -37,7 +36,7 @@ class StockCommandUseCaseTest {
         val decreaseAmount = 10
 
         val currentStock = Stock(productId, currentQuantity)
-        every { stockRepository.findByProductId(productId) } returns Optional.of(currentStock)
+        every { stockRepository.findByProductId(productId) } returns currentStock
         val captor = slot<Stock>()
         every { stockRepository.save(capture(captor)) } answers { firstArg() }
 
@@ -64,9 +63,9 @@ class StockCommandUseCaseTest {
         val decreaseAmount2 = 8
 
         every { stockRepository.findByProductId(productId1) } returns
-            Optional.of(Stock(productId1, currentQuantity1))
+            Stock(productId1, currentQuantity1)
         every { stockRepository.findByProductId(productId2) } returns
-            Optional.of(Stock(productId2, currentQuantity2))
+            Stock(productId2, currentQuantity2)
         val savedStocks = mutableListOf<Stock>()
         every { stockRepository.save(capture(savedStocks)) } answers { firstArg() }
 
@@ -99,7 +98,7 @@ class StockCommandUseCaseTest {
         val decreaseAmount = 10 // 재고(5)보다 많음
 
         val currentStock = Stock(productId, currentQuantity)
-        every { stockRepository.findByProductId(productId) } returns Optional.of(currentStock)
+        every { stockRepository.findByProductId(productId) } returns currentStock
 
         val commands = listOf(ProductStockCommand(productId, decreaseAmount))
 
@@ -117,7 +116,7 @@ class StockCommandUseCaseTest {
     fun decreaseForOrders_whenProductNotFound_throwsProductNotFoundException() {
         // given
         val productId = 99L
-        every { stockRepository.findByProductId(productId) } returns Optional.empty()
+        every { stockRepository.findByProductId(productId) } returns null
 
         val commands = listOf(ProductStockCommand(productId, 5))
 

@@ -1,13 +1,13 @@
 package com.hyoguoo.paymentplatform.product.application.port.out
 
 import com.hyoguoo.paymentplatform.product.domain.Stock
-import java.util.Optional
 
 /**
  * 재고 outbound 포트.
  */
 interface StockRepository {
-    fun findByProductId(productId: Long?): Optional<Stock>
+    /** 재고 행이 없으면 null 을 돌려준다. */
+    fun findByProductId(productId: Long): Stock?
 
     fun save(stock: Stock): Stock
 }

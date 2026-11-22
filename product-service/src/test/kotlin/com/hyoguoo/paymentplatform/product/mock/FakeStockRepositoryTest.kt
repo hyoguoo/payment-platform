@@ -5,7 +5,6 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
-import java.util.Optional
 
 class FakeStockRepositoryTest {
     private lateinit var repository: FakeStockRepository
@@ -21,19 +20,19 @@ class FakeStockRepositoryTest {
         val stock = Stock(1L, 100)
 
         repository.save(stock)
-        val found: Optional<Stock> = repository.findByProductId(1L)
+        val found: Stock? = repository.findByProductId(1L)
 
-        assertThat(found).isPresent
-        assertThat(found.get().productId).isEqualTo(1L)
-        assertThat(found.get().quantity).isEqualTo(100)
+        assertThat(found).isNotNull
+        assertThat(found!!.productId).isEqualTo(1L)
+        assertThat(found.quantity).isEqualTo(100)
     }
 
     @Test
     @DisplayName("findByProductId — 존재하지 않는 상품은 empty")
     fun findByProductId_NotFound_ReturnsEmpty() {
-        val found: Optional<Stock> = repository.findByProductId(999L)
+        val found: Stock? = repository.findByProductId(999L)
 
-        assertThat(found).isEmpty
+        assertThat(found).isNull()
     }
 
     @Test
@@ -44,7 +43,7 @@ class FakeStockRepositoryTest {
         val after = repository.increment(1L, 10)
 
         assertThat(after).isEqualTo(60)
-        assertThat(repository.findByProductId(1L).get().quantity).isEqualTo(60)
+        assertThat(repository.findByProductId(1L)!!.quantity).isEqualTo(60)
     }
 
     @Test
@@ -55,7 +54,7 @@ class FakeStockRepositoryTest {
         val success = repository.decrement(1L, 30)
 
         assertThat(success).isTrue
-        assertThat(repository.findByProductId(1L).get().quantity).isEqualTo(20)
+        assertThat(repository.findByProductId(1L)!!.quantity).isEqualTo(20)
     }
 
     @Test
@@ -66,6 +65,6 @@ class FakeStockRepositoryTest {
         val success = repository.decrement(1L, 10)
 
         assertThat(success).isFalse
-        assertThat(repository.findByProductId(1L).get().quantity).isEqualTo(5)
+        assertThat(repository.findByProductId(1L)!!.quantity).isEqualTo(5)
     }
 }

@@ -3,7 +3,6 @@ package com.hyoguoo.paymentplatform.product.presentation.dto
 import com.hyoguoo.paymentplatform.product.application.dto.ProductPage
 import kotlin.math.ceil
 
-@JvmRecord
 data class ProductPageResponse(
     val content: List<ProductResponse>,
     val page: Int,
@@ -12,7 +11,6 @@ data class ProductPageResponse(
     val totalPages: Int,
 ) {
     companion object {
-        @JvmStatic
         fun from(productPage: ProductPage): ProductPageResponse =
             ProductPageResponse(
                 content = productPage.content.map(ProductResponse::from),

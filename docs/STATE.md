@@ -14,9 +14,9 @@
 - 문서: [BRIEF](topics/CHECKOUT-RECEIPT-TRACKING/BRIEF.md)
 
 ### KOTLIN-PILOT-PRODUCT: product-service를 코틀린으로 시범 이관
-- 규모·단계: 큼 · execute (T13 자바 호환 표기 정리)
+- 규모·단계: 큼 · ship (리뷰 대기, T1~T13 완료)
 - 추적: [#170](https://github.com/hyoguoo/payment-platform/issues/170) · 브랜치 `refactor/170-kotlin-pilot-product`
-- 다음: T13 → ship(리뷰, 이관 전후 로컬 스택 비교, 다른 모듈 검사)
+- 다음: reviewer·risk-reviewer 검토 → 전체 검증(로컬 스택 비교 포함) → 문서 동기화 → 아카이브
 - 막힘: 없음
 - 문서: [BRIEF](topics/KOTLIN-PILOT-PRODUCT/BRIEF.md) · [DESIGN](topics/KOTLIN-PILOT-PRODUCT/DESIGN.md)
 

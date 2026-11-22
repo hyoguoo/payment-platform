@@ -19,9 +19,7 @@ class ProductQueryUseCase(
 ) : ProductQueryService {
     @Transactional(readOnly = true)
     override fun getById(id: Long): Product =
-        productRepository
-            .findById(id)
-            .orElseThrow { ProductNotFoundException.of(ProductErrorCode.PRODUCT_NOT_FOUND) }
+        productRepository.findById(id) ?: throw ProductNotFoundException.of(ProductErrorCode.PRODUCT_NOT_FOUND)
 
     @Transactional(readOnly = true)
     override fun getPage(

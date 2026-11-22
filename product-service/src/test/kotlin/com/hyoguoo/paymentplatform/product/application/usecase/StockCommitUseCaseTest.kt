@@ -50,7 +50,7 @@ class StockCommitUseCaseTest {
 
         stockCommitUseCase.commit(eventUUID, orderId, productId, qty, now, expiresAt)
 
-        val updated = fakeStockRepository.findByProductId(productId).orElseThrow()
+        val updated = checkNotNull(fakeStockRepository.findByProductId(productId))
         assertThat(updated.quantity).isEqualTo(initialStock - qty)
     }
 
@@ -72,7 +72,7 @@ class StockCommitUseCaseTest {
         stockCommitUseCase.commit(eventUUID, orderId, productId, qty, now, expiresAt)
 
         // 두 번째 호출은 dedupe 로 무시 → 재고는 첫 번째 호출 기준
-        val current = fakeStockRepository.findByProductId(productId).orElseThrow()
+        val current = checkNotNull(fakeStockRepository.findByProductId(productId))
         assertThat(current.quantity).isEqualTo(initialStock - qty)
     }
 
@@ -115,7 +115,7 @@ class StockCommitUseCaseTest {
         // Fake 에 now 가 전달됐는지는 FakeEventDedupeStore.contains 로 확인
         assertThat(fakeEventDedupeStore.contains(eventUUID)).isTrue
         // 재고는 첫 번째 호출분만 차감
-        val current = fakeStockRepository.findByProductId(productId).orElseThrow()
+        val current = checkNotNull(fakeStockRepository.findByProductId(productId))
         assertThat(current.quantity).isEqualTo(initialStock - qty)
     }
 
@@ -137,7 +137,7 @@ class StockCommitUseCaseTest {
 
         // FakeEventDedupeStore 에 UUID 가 기록됐고 재고 차감 완료
         assertThat(fakeEventDedupeStore.contains(eventUUID)).isTrue
-        val current = fakeStockRepository.findByProductId(productId).orElseThrow()
+        val current = checkNotNull(fakeStockRepository.findByProductId(productId))
         assertThat(current.quantity).isEqualTo(initialStock - qty)
     }
 
@@ -164,7 +164,7 @@ class StockCommitUseCaseTest {
         }
 
         // 저장이 일어나지 않아 재고 값이 그대로다 — 초과분 흔적을 남기지 않는다
-        val current = fakeStockRepository.findByProductId(productId).orElseThrow()
+        val current = checkNotNull(fakeStockRepository.findByProductId(productId))
         assertThat(current.quantity).isEqualTo(initialStock)
     }
 

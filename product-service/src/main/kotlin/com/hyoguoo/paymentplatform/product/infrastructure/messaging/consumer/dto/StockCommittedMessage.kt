@@ -24,7 +24,6 @@ import java.time.Instant
  * - orderId — 주문 ID (dedupe 메타데이터, String 통일)
  * - expiresAt — dedupe TTL 만료 시각 (producer가 채우고, null이면 consumer가 fallback 계산)
  */
-@JvmRecord
 data class StockCommittedMessage(
     val productId: Long?,
     val qty: Int?,
