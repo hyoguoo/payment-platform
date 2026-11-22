@@ -22,25 +22,13 @@
     </Match>
 
     <!--
-        product-service 코틀린 이관 중 임시 제외. 코틀린 포트 StockRepository.findByProductId(Long?) 의 @Nullable 을
-        자바 테스트 Fake 가 물려받아, null 을 받지 않는 맵 조회가 지적된다. 단위 테스트는 null 을 넘기지 않는다.
-        이 Fake 를 코틀린으로 옮기면 이 항목을 지운다(docs/topics/KOTLIN-PILOT-PRODUCT/DESIGN.md T12).
+        product-service 코틀린 테스트 코드가 만드는 오탐. 코틀린 컴파일러가 lateinit 프로퍼티 접근에 넣는 초기화 검사와
+        Intrinsics 의 null 검사, 자바 API 의 플랫폼 타입 접근, 목 빈 프로퍼티의 접근자를 SpotBugs 가 null 경로·노출 필드로 본다.
+        product 패키지의 *Test 클래스와 이 버그 패턴에만 적용한다(docs/topics/KOTLIN-PILOT-PRODUCT/DESIGN.md D18).
     -->
     <Match>
-        <Bug pattern="NP_PARAMETER_MUST_BE_NONNULL_BUT_MARKED_AS_NULLABLE"/>
-        <Class name="com.hyoguoo.paymentplatform.product.mock.FakeStockRepository"/>
-        <Method name="findByProductId"/>
-    </Match>
-
-    <!--
-        product-service 코틀린 이관 중 임시 제외. 코틀린 ProductEntity.id(Long?, 저장 전에는 비어 있음)를 저장 직후
-        읽어 StockEntity 생성자(Long)로 넘기는 자바 테스트 픽스처 줄이 지적된다. 저장 뒤라 id 는 항상 있다.
-        이 테스트를 코틀린으로 옮기면 이 항목을 지운다(docs/topics/KOTLIN-PILOT-PRODUCT/DESIGN.md T12).
-    -->
-    <Match>
-        <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE"/>
-        <Class name="com.hyoguoo.paymentplatform.product.infrastructure.repository.ProductRepositoryImplPageTest"/>
-        <Method name="saveProductWithStock"/>
+        <Class name="~com\.hyoguoo\.paymentplatform\.product\..*Test"/>
+        <Bug pattern="NP_NULL_ON_SOME_PATH,NP_NULL_PARAM_DEREF,NP_NONNULL_RETURN_VIOLATION,PA_PUBLIC_PRIMITIVE_ATTRIBUTE,RCN_REDUNDANT_NULLCHECK_OF_NONNULL_VALUE,RCN_REDUNDANT_NULLCHECK_WOULD_HAVE_BEEN_A_NPE,BC_BAD_CAST_TO_ABSTRACT_COLLECTION,OBL_UNSATISFIED_OBLIGATION"/>
     </Match>
 
 </FindBugsFilter>

@@ -183,7 +183,7 @@ implementer 후보: T6(hook·stack.md), T7(CI). 쓰기 범위가 product-service
   - 의존: 없음
   - 완료 기준: `product-service/src/main/{java,kotlin}/**/*Stock*`로 바뀌고 다른 패턴은 그대로다 (D19)
   - 검증: `uv run scripts/check-agent-docs.py --strict`
-  - tdd: false | risk: false | 담당: 메인
+  - tdd: false | risk: false | 담당: implementer(메인이 검증)
   - 결과: `.agents/profiles/risk.md:48` 패턴 한 개만 바꿈. `check-agent-docs.py --strict` 이번 변경으로 생긴 문제 0건(기존 Mermaid 금지 문자 17건은 workflow 스킬 문서의 것)
 - [x] **T2: 재고 확정 메시지 특성 테스트(자바, 통합)**
   - 변경 위치: `product-service/src/test/.../integration/` (격리 통합 테스트와 같은 설정의 새 테스트 클래스)
@@ -310,13 +310,21 @@ implementer 후보: T6(hook·stack.md), T7(CI). 쓰기 범위가 product-service
     - SpotBugs: 코틀린 바이트코드에서 새 지적이 없어 main 제외 항목을 넣지 않았다(D18)
     - 커버리지(D20): 처음에 0.95로 실패했다. 원인 두 가지를 고쳤고 97% 기준은 그대로다. (1) 루트 빌드가 리포트의 클래스 디렉토리를 설정 시점의 자바 출력 경로로 고정해 자바 소스가 없어지자 리포트가 비었다(CI 커버리지 코멘트도 비게 된다). product 빌드에서 리포트가 검증 태스크와 같은 목록을 쓰게 했다. (2) 코틀린은 최상위 `main`을 `ProductServiceApplicationKt`로 컴파일해 루트 제외 패턴 `**/*Application.class`에 걸리지 않았다. 같은 이유로 `*ApplicationKt`를 이 모듈에서 뺐다. 결과 68/69줄(98.6%). 남은 1줄은 `ProductQueryUseCase.getPage`(단위 테스트가 부르지 않음)
     - 검사: `test` 70건, `integrationTest` 41건, `ktlintCheck`, `detekt`, `checkstyleMain`(소스 없음)·`checkstyleTest`, `spotbugsMain`·`spotbugsTest`, `jacocoTestCoverageVerification`, `bootJar`(Start-Class `ProductServiceApplicationKt`) 통과
-- [ ] **T12: 테스트를 코틀린(MockK·springmockk)으로**
+- [x] **T12: 테스트를 코틀린(MockK·springmockk)으로**
   - 변경 위치: `product-service/src/test/java/**` → `src/test/kotlin/**`
   - 의존: T11
   - 완료 기준: 테스트 클래스·메서드 수와 시나리오가 이관 전과 같다. `src/test/java`가 빈다. 스키마 대조 테스트는 `primaryConstructor.parameters` 순서로 검사한다. T9·T10에서 넣은 `spotbugs-exclude-test.xml`의 임시 제외 2건(`FakeStockRepository`, `ProductRepositoryImplPageTest`)을 지운다 (R2, m2)
   - 검증: `./gradlew :product-service:test :product-service:integrationTest` 실행 건수가 T11 뒤와 같음, `ktlintCheck`, `detekt`, `spotbugsTest`
   - tdd: false | risk: false | 담당: 메인
-  - 결과:
+  - 결과: 자바 테스트 25개를 지우고 코틀린 25개와 도우미 1개(`support/KMySQLContainer.kt`, 코틀린에서 `MySQLContainer<SELF>`를 만들기 위한 하위 타입)를 추가했다. `org.mockito` 사용 0건. main 코드 변경 없음. implementer가 작업하고 메인이 아래를 직접 확인했다
+    - 실행 건수: `--rerun-tasks`로 `test` 70건, `integrationTest` 41건 통과. 클래스별 건수가 이관 전(자바)과 모두 같다(결과 XML의 testsuite 이름·건수 대조)
+    - 특성 테스트 3개(HTTP 계약, 확정 메시지 호환, 격리 도달)의 문자열 리터럴 76·90·50개가 코틀린 쪽에 그대로 있다(빠진 것은 자바 전용 `@SuppressWarnings("resource")` 하나)
+    - MockK로 바꾸며 맞춘 것: `@SpykBean`이 주입한 트랜잭션 프록시 대신 `AopTestUtils.getUltimateTargetObject`로 꺼낸 스파이에 `verify`·`clearMocks`(호출은 프록시를 거침), Mockito `verify` 기본 1회는 `exactly = 1`로 명시, 반환값을 쓰지 않는 협력자만 `relaxed = true`
+    - 스키마 대조: `primaryConstructor.parameters`의 순서·이름, `orderId`는 `classifier == String::class`
+    - Fake 2개: null 입력에서 자바처럼 NPE를 내지 않는다. `FakeStockRepository`는 빈 결과, `FakeEventDedupeStore`는 `''` 키로 기록(운영 저장소와 같은 동작). 단위 테스트는 null을 넘기지 않아 결과는 같다
+    - SpotBugs: T9·T10 임시 제외 2건을 지웠다. 대신 코틀린 테스트 바이트코드 오탐 135건(lateinit 초기화 검사, Intrinsics null 검사, 목 빈 접근자, 인라인된 `use`의 자원 반납 경로)을 product 패키지 `*Test` 클래스 + 패턴 8개로 제외했다. 메인이 제외를 잠시 빼고 돌려 패턴별로 분류해 확인했고, 자원 미반납 2건은 `use { }`가 닫는 코드라 오탐이다
+    - detekt: 기본 설정이 테스트 경로를 이미 제외하는 규칙이 많아 `detekt.yml`은 바꾸지 않았다. 지적은 코드로 고쳤고 `@Suppress`는 `ArchitectureTest`(ArchUnit이 static 필드를 요구) 1곳
+    - 절차상 제한: implementer가 코드 파일을 셸(heredoc)로 써서 편집 hook의 파일 단위 ktlint가 돌지 않았다. 모듈 전체 `ktlintCheck`·`detekt`로 대신 확인했다
 - [ ] **T13: 자바 호환 표기 정리**
   - 변경 위치: `@JvmRecord`·`@JvmStatic`·`@JvmField`를 쓴 main 파일
   - 의존: T12
