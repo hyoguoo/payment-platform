@@ -84,6 +84,19 @@ class IdentifierCheckTest(unittest.TestCase):
         self.assertEqual(3, len(issues))
         self.assertFalse(any("LegacyNoteTest" in i for i in issues))
 
+    def test_코틀린_파일에_선언된_클래스도_색인하고_주석은_제외한다(self):
+        write(self.root, "product-service/src/main/kotlin/c/StockCommitUseCase.kt", """
+            package c
+            // KotlinCommentOnlyName 은 주석에만 있다
+            class StockCommitUseCase(private val note: String = "KotlinStringOnlyName")
+        """)
+        index = check_agent_docs.build_code_index(self.root)
+        doc = write(self.root, "docs/context/KOTLIN.md",
+                    "`StockCommitUseCase`, `KotlinCommentOnlyName`, `KotlinStringOnlyName`\\n")
+        issues = check_agent_docs.check_identifiers([doc], index, self.root)[1]
+        self.assertEqual(2, len(issues))
+        self.assertFalse(any("StockCommitUseCase" in i for i in issues))
+
     def test_port_out_아래_선언도_색인한다(self):
         write(self.root, "payment-service/src/main/java/a/application/port/out/OnlyHerePort.java", """
             package a.application.port.out;

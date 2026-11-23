@@ -16,7 +16,8 @@ plugins {
 extra["springCloudVersion"] = "2024.0.0"
 extra["testcontainersVersion"] = "1.20.4"
 // 단위 커버리지 기준 게이트. 통합테스트 정합성은 integration-test job 통과(pass/fail)로 보호.
-// 단위 test exec 실측 100%(46/46 라인) 기준, 안전마진 3%p 적용.
+// 자바 시절 단위 test exec 실측 100%(46/46 라인) 기준, 안전마진 3%p 적용.
+// 코틀린 이관 뒤 실측 98.6%(68/69 라인, 2026-11-23). 남은 1줄은 ProductQueryUseCase.getPage.
 extra["jacoco.lineCoverageMinimum"] = "0.97"
 // Spring Boot 3.4.4 BOM 은 Kotlin 을 1.9.25 로 관리한다. 프로젝트 속성으로 BOM 의 kotlin.version 을 덮어써
 // 표준 라이브러리·리플렉션 버전을 컴파일러(위 플러그인)와 맞춘다.
@@ -181,10 +182,13 @@ ktlint {
 
 // CI 의 빌드·단위 테스트 단계는 lint 를 빼고 돌린 뒤 lint 를 전용 단계에서 따로 돌린다(.github/workflows/_service-ci.yml).
 // ktlint 플러그인은 소스 셋별 검사 태스크를 check 에 직접 붙여 -x ktlintCheck 만으로는 빠지지 않으므로 속성 하나로 끈다.
+// 실제 검사는 runKtlintCheckOver… 태스크가 하므로 이름에 ktlint 가 들어간 태스크를 모두 끈다(편집 hook 용 classpath 태스크는 남긴다).
 if (providers.gradleProperty("skipKotlinLint").isPresent) {
     tasks
-        .matching { (it.name.startsWith("ktlint") && it.name.endsWith("Check")) || it.name == "detekt" }
-        .configureEach { enabled = false }
+        .matching {
+            (it.name.contains("ktlint", ignoreCase = true) && it.name != "writeKtlintCliClasspath") ||
+                it.name == "detekt"
+        }.configureEach { enabled = false }
 }
 
 // 편집 직후 훅(.agents/hooks/lint-file.sh → config/ktlint/check-file.sh)이 쓰는 ktlint CLI classpath 를 파일로 떨군다.

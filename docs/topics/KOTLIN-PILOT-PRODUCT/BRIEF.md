@@ -196,7 +196,7 @@ flowchart TD
 | 제안 | 내용 | 버린 대안 |
 |---|---|---|
 | Kotlin 2.4.21 + detekt 1.23.8 | 최신 안정판 Kotlin을 쓴다. detekt 안정판은 Kotlin 2.0.21로 빌드돼 있어 detekt 실행용 Kotlin만 2.0.21로 고정한다. 타입 분석이 필요한 detekt 규칙은 쓰지 못한다 | detekt 2.0 알파를 빌드 게이트에 씀, Kotlin을 2.0.21로 낮춤 |
-| 새 파일 3개 | 루트 `.editorconfig`(ktlint 설정), `config/detekt/detekt.yml`, `config/lint-file.sh`(편집 hook이 `.java`는 Checkstyle, `.kt`는 ktlint로 나눠 보냄) | hook 스크립트에 언어 분기 추가 |
+| 새 파일 3개(구현 뒤 4개) | 루트 `.editorconfig`(ktlint 설정), `config/detekt/detekt.yml`, `config/lint-file.sh`(편집 hook이 `.java`는 Checkstyle, `.kt`는 ktlint로 나눠 보냄). 구현에서 ktlint를 파일 하나에 돌리는 `config/ktlint/check-file.sh`가 더해졌다 | hook 스크립트에 언어 분기 추가 |
 | CI 입력 `kotlin-lint` | `_service-ci.yml`에 입력을 두고 product job만 켠다. ktlint·detekt 결과는 기존 reviewdog 경로로 올린다 | 모든 서비스에서 태스크 유무 탐지 |
 | main 컴파일 경고를 오류로 처리 | 경고를 남기지 않는 저장소 원칙(`maxWarnings = 0`)과 맞춘다 | 경고 허용 |
 | try 밖 변수 재할당 금지 규칙은 코틀린에서 없앤다 | 코틀린은 `try`가 값을 돌려주는 식이라 같은 문제를 문법으로 피한다. detekt에 대응 규칙이 없다 | detekt 커스텀 규칙 작성 |

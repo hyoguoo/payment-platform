@@ -24,7 +24,7 @@
 | D15 | 편집 hook: `LINT_FILE_PATTERN`을 `\.(java|kts?)$`로 넓히고 `LINT_FILE`을 확장자별 분배 스크립트(`config/lint-file.sh`)로 바꾼다. `.java`는 기존 `check-file.sh`, `.kt`·`.kts`는 ktlint CLI로 파일 하나만 검사한다. ktlint CLI classpath는 product-service의 Gradle 태스크가 파일로 떨군다(`writeCheckstyleCliClasspath`와 같은 방식). detekt는 편집 hook에 넣지 않는다 | hook 스크립트는 스택과 무관하게 `verify-config` 한 블록만 읽으므로 설정과 분배 스크립트만 바꾸면 된다. detekt는 파일 단위로 돌리기에 느리다 | hook 스크립트에 언어 분기 추가(스택 무관 원칙 위반) | 개발자 답변(질문 3) + 제안(방식) |
 | D16 | 종료 hook: `VERIFY_PATTERN`에 `kts?`를 더하고 `ROOT_FILES`에 `.editorconfig`, `config/detekt/`를 더한다 | 코틀린 변경이 종료 검증 대상이 되도록(R7) | 없음 | 개발자 답변(질문 3) |
 | D17 | CI: `_service-ci.yml`에 입력 `kotlin-lint`(기본 false)를 두고 product job만 true로 준다. true면 `ktlintCheck`·`detekt`를 돌리고, 결과(checkstyle 형식 XML)를 기존 reviewdog checkstyle 경로로 올리고, lint 게이트 판정에 넣는다 | ktlint·detekt 모두 checkstyle 형식 리포트를 낼 수 있어 기존 reviewdog 흐름을 그대로 쓴다. 다른 서비스 job은 바뀌지 않는다 | 모든 서비스에서 태스크 유무를 탐지(불필요한 일반화) | 개발자 답변(질문 3) + 제안(방식) |
-| D18 | SpotBugs는 그대로 돌린다. 첫 실행에서 코틀린 컴파일러 생성 코드 때문에 생긴 지적만 `spotbugs-exclude.xml`에 넣되, 클래스 전체가 아니라 생성 메서드(`$default`, `componentN`, `copy`, `Companion`)와 버그 패턴을 함께 지정한다 | 클래스 단위로 빼면 `StockCommitUseCase`·`JdbcEventDedupeStore` 같은 핵심 클래스의 null·노출 패턴 검사도 꺼진다 | 끄기(질문 6-B), 클래스 단위 제외 | 개발자 답변(질문 6) + 사전 점검 m5 |
+| D18 | SpotBugs는 그대로 돌린다. 첫 실행에서 코틀린 컴파일러 생성 코드 때문에 생긴 지적만 `spotbugs-exclude.xml`에 넣되, 클래스 전체가 아니라 생성 메서드(`$default`, `componentN`, `copy`, `Companion`)와 버그 패턴을 함께 지정한다 | 클래스 단위로 빼면 `StockCommitUseCase`·`JdbcEventDedupeStore` 같은 핵심 클래스의 null·노출 패턴 검사도 꺼진다 | 끄기(질문 6-B), 클래스 단위 제외 | 개발자 답변(질문 6) + 사전 점검 m5. (ship에서 보탬) main은 제외 항목 없이 통과했다. 테스트 코드는 코틀린 바이트코드 오탐 135건(lateinit 초기화 검사, Intrinsics null 검사, 목 빈 접근자, 인라인된 `use`의 자원 반납 경로)을 product 패키지 `*Test` 클래스 + 패턴 8개로 제외했다. 메인이 제외를 빼고 돌려 패턴별로 분류해 확인했다(T12) |
 | D19 | risk.md 핵심 경로의 `product-service/src/main/java/**/*Stock*`를 `product-service/src/main/{java,kotlin}/**/*Stock*`로 넓힌다. 첫 태스크에서 적용한다 | 나머지 product 패턴은 `**/product/...`로 시작해 kotlin 경로에도 걸리지만 이 패턴만 java 경로에 묶여 있다. main 이관보다 늦으면 그사이 `StockCommitUseCase`·`Stock`·`StockEntity`·`StockRepositoryImpl` 변경이 위험 검토 대상에서 빠진다 | 그대로 둠(핵심 경로 검토 누락), 이관 뒤 적용 | 제안 + 사전 점검 m4 |
 | D20 | 단위 커버리지 게이트(라인 97%)는 그대로 둔다. 코틀린 이관 뒤 떨어지면 기준을 바꾸지 않고 멈춰서 개발자에게 묻는다 | 기준 변경은 기존 게이트를 바꾸는 결정이다 | 미리 기준 낮춤 | 승인된 브리핑(R7) |
 | D21 | 로그는 `@Slf4j` 대신 `LoggerFactory.getLogger`로 만든 private 로거를 쓰고 `LogFmt` 호출과 문구는 그대로 둔다 | R6(로그 마스킹), 로그 기반 알람·스모크 영향 없음 | kotlin-logging 도입(새 라이브러리, 합의 밖) | 승인된 브리핑(R6) |
@@ -37,7 +37,7 @@
 | 필드 | 자바 타입 | 자바 현재 결과(null 또는 누락) | 코틀린 선언과 처리 |
 |---|---|---|---|
 | `productId` | `Long` | 유스케이스를 부르기 전 `StockCommitConsumer`에서 unboxing NPE. 원인 예외 `NullPointerException`(재시도 대상)으로 재시도 뒤 원본 Kafka 키로 격리. 중복 판정 행 없음 | `Long?`, 넘길 때 `!!`(NPE로 같은 재시도 분류) |
-| `qty` | `int` | null·누락 모두 0으로 들어온다. 유스케이스가 `qty=0`으로 한 번 불리고, 재고는 그대로, 중복 판정 행이 남고, 격리되지 않는다 | `Int`에 기본값 0(누락), null도 0이 되도록 맞춘다. 결과는 T2 테스트로 확인 |
+| `qty` | `int` | null·누락 모두 0으로 들어온다. 유스케이스가 `qty=0`으로 한 번 불리고, 재고는 그대로, 중복 판정 행이 남고, 격리되지 않는다 | `Int?`, 컨슈머에서 `qty ?: 0`(코틀린 Jackson 모듈의 기본값 처리에 맡기지 않고 코드로 드러낸다) |
 | `idempotencyKey` | `String` | null·누락 모두 유스케이스에 null로 넘어가고 중복 판정 행이 `''` 키로 저장된다. 같은 상품에 null 키 메시지 2건이면 첫 건만 차감되고 두 번째는 중복으로 무시된다 | `String?`. 자바 결과를 그대로 지킨다(BRIEF 질문 8-A). 결함은 TODOS `STOCK-COMMIT-NULL-KEY` |
 | `occurredAt` | `Instant` | null이면 만료 시각이 수신 시각 + 8일 | `Instant?` |
 | `orderId` | `String` | null·누락이면 빈 문자열로 유스케이스에 넘어간다 | `String?`, `?: ""` |
@@ -88,7 +88,7 @@
 | `product-service/src/main/resources/**` | 바뀌지 않는다(스키마, Flyway, `application*.yml`, logback) |
 | 루트 `build.gradle`, `settings.gradle` | 바뀌지 않는다 |
 | 루트 `.editorconfig` (새 파일) | 코틀린 파일 줄 길이 120 등 ktlint 설정. 다른 모듈 빌드에는 영향 없음 |
-| `config/detekt/detekt.yml` (새 파일), `config/lint-file.sh` (새 파일), `config/spotbugs/spotbugs-exclude*.xml` | detekt 규칙, 편집 hook 분배, SpotBugs 오탐 제외 |
+| `config/detekt/detekt.yml`, `config/lint-file.sh`, `config/ktlint/check-file.sh` (새 파일), `config/spotbugs/spotbugs-exclude*.xml` | detekt 규칙, 편집 hook 분배, SpotBugs 오탐 제외 |
 | `.agents/profiles/stack.md` | 버전 표, product-service 정적 분석 명령, `verify-config` |
 | `.agents/profiles/risk.md` | product-service 핵심 경로 패턴 |
 | `.github/workflows/_service-ci.yml`, `ci.yml` | `kotlin-lint` 입력과 product job 설정 |
@@ -340,10 +340,23 @@ implementer 후보: T6(hook·stack.md), T7(CI). 쓰기 범위가 product-service
 
 ## 리뷰 처리
 
+2026-11-23, diff `main...6608b53b`를 reviewer와 risk-reviewer가 병렬로 검토했다. 두 검토 모두 critical 0, major 0. risk-reviewer는 핵심 경로 파일을 자바 원본과 한 줄씩 대조해 FS-1~FS-14가 모두 성립하고 INV-5·INV-7을 깨는 경로가 없다고 판정했다.
+
 | 항목 | 등급 | 결정 | 근거 |
 |---|---|---|---|
+| `skipKotlinLint`가 `runKtlintCheckOver…` 태스크를 끄지 못해 CI 빌드 단계에서 ktlint가 돈다 (reviewer) | minor | 수정 | 메인이 코틀린 소스가 있는 상태로 재현(태스크가 실행 대상에 남음). 이름에 `ktlint`가 들어간 태스크로 넓히고(CLI classpath 태스크 제외) 속성 유무로 SKIPPED·포함을 확인 |
+| 문서·주석 불일치: "필드별 처리" 표 `qty` 행, 새 파일 수(실제 4개), TODOS `STOCK-COMMIT-NULL-KEY`의 깨진 백틱과 "추정" 문구, build 주석의 커버리지 수치 (reviewer) | minor | 수정 | 코드와 특성 테스트 결과에 맞춰 고침 |
+| D18 서술과 SpotBugs 테스트 제외 범위가 다르다 (reviewer) | minor | 수정 | D18 근거 칸에 테스트 코드 제외 방식과 135건 분류 근거를 보탬 |
+| `scripts/test-hooks.sh` 결과가 T6 시점이다 (reviewer) | minor | 수정 | 전체 검증에서 재실행 |
+| PR 요약 코멘트에 ktlint·detekt 건수가 없다 (reviewer) | minor | 보류 | 합의 때 한계로 적은 범위. TODOS `KOTLIN-LINT-SUMMARY` |
+| SpotBugs reviewdog 변환이 `src/main/java` 경로를 고정해 코틀린 지적의 인라인 코멘트가 버려진다 (risk-reviewer) | minor | 보류 | 게이트 판정은 그대로라 차단 효과는 유지. TODOS `SPOTBUGS-REVIEWDOG-KOTLIN-PATH` |
+| 통합 테스트 샤딩 스크립트가 `build/classes/java/test`만 본다 (risk-reviewer) | minor | 보류 | product는 샤드 1개라 지금 해당 없음, 늘리면 시끄럽게 실패. TODOS `INTEGRATION-SHARD-KOTLIN` |
+| FS-15 제안: logback 설정의 `<maskPattern>`이 `addMaskPattern`에 연결되는지 확인하는 테스트가 없다 (risk-reviewer) | minor | 보류 | 이관 전에도 같은 빈틈이고, 코틀린에서도 같은 이름의 공개 메서드라 연결 방식이 같다. TODOS `LOGBACK-MASK-WIRING-TEST` |
+| 커버리지 여유가 1줄이다(68/69) (reviewer) | minor | 제외 | 기준(97%)을 만족한다. 정보 기록만 |
+| 다른 5개 모듈 검사·이관 후 로컬 스택 비교가 미검증 (두 검토) | - | 해소 | 검토 중에 메인이 실행했다. 다른 모듈 단위 1,177건·정적 분석 통과, 로컬 스택 비교 `diff -r` 차이 없음(아래 진행 기록) |
 
 ## 진행 기록
 
+- 2026-11-23: ship 리뷰 처리(수정 4, 보류 4, 제외 1). 다른 5개 모듈 `test`·`checkstyleMain`·`checkstyleTest`·`spotbugsMain`·`spotbugsTest` 통과(단위 1,177건, 실패 0. 코드·classpath가 그대로라 단위 테스트는 UP-TO-DATE 재사용, 공유 설정이 바뀐 정적 분석은 재실행). 이관 후 로컬 스택 비교(`baseline/kotlin/`)가 자바 기준선과 `diff -r -x smoke.log` 차이 없음. 컨테이너 기동 로그 `Started ProductServiceApplicationKt`로 코틀린 빌드 확인
 - 2026-11-23: T1~T13 완료. 다음은 ship(리뷰, 이관 전후 로컬 스택 비교, 다른 5개 모듈 검사, 문서 동기화).
 - 2026-11-22: 사전 브리핑 승인. DESIGN 초안 작성, 도구 조합을 임시 프로젝트로 확인. risk-reviewer 사전 점검 대기.
