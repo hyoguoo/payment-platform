@@ -13,16 +13,9 @@
 - 막힘: 없음
 - 문서: [BRIEF](topics/CHECKOUT-RECEIPT-TRACKING/BRIEF.md)
 
-### KOTLIN-PILOT-PRODUCT: product-service를 코틀린으로 시범 이관
-- 규모·단계: 큼 · ship (리뷰 대기, T1~T13 완료)
-- 추적: [#170](https://github.com/hyoguoo/payment-platform/issues/170) · 브랜치 `refactor/170-kotlin-pilot-product`
-- 다음: reviewer·risk-reviewer 검토 → 전체 검증(로컬 스택 비교 포함) → 문서 동기화 → 아카이브
-- 막힘: 없음
-- 문서: [BRIEF](topics/KOTLIN-PILOT-PRODUCT/BRIEF.md) · [DESIGN](topics/KOTLIN-PILOT-PRODUCT/DESIGN.md)
-
 ## 최근 완료
 
+- **KOTLIN-PILOT-PRODUCT** (2026-11-23) — [완료 요약](archive/kotlin-pilot-product/BRIEF.md#완료-요약)
 - **PAYMENT-THROUGHPUT** (2026-11-16) — [완료 요약](archive/payment-throughput/BRIEF.md#완료-요약)
-- **AGENT-STRUCTURE-OVERHAUL** (2026-11-06) — [완료 요약](archive/agent-structure-overhaul/BRIEF.md#완료-요약)
 
 전체 이력: `docs/archive/README.md` / 구 STATE 이력: `docs/archive/state-history-2026H1.md`

@@ -228,3 +228,100 @@ flowchart TD
 없음
 
 ## 완료 요약
+
+**결과**: 완료 (2026-11-23)
+
+product-service의 main과 테스트가 모두 코틀린이 됐고 Lombok 의존이 없다. 이관 전에 자바 코드로 고정한 특성 테스트 29건(HTTP 계약 17, 확정 메시지 호환 12)과 기존 테스트가 이관 뒤에도 같은 건수로 통과하고, 로컬 스택의 이관 전후 결과가 파일 단위로 같다.
+
+### 무엇이 바뀌었나
+
+| 영역 | 이관 전 | 이관 뒤 |
+|---|---|---|
+| main 코드 | 자바 44개 파일, Lombok | 코틀린, Lombok 없음. 레이어·패키지·클래스 이름 그대로 |
+| 테스트 | 자바 23개 파일, Mockito | 코틀린 25개 파일(특성 테스트 2개 포함) + 도우미 1개, MockK·springmockk |
+| 빌드 | `build.gradle`(Groovy) | `build.gradle.kts`, Kotlin 2.4.21, ktlint 1.8.0·detekt 1.23.8 게이트. 루트 `build.gradle`은 그대로 |
+| 검증 장치 | 편집 hook·종료 hook·CI가 `.java`만 봄 | `.kt`·`.kts`도 봄. 편집 hook은 확장자별로 Checkstyle·ktlint, CI product job에 Kotlin lint 단계 |
+| 외부 동작 | HTTP 3개, 재고 확정 소비·격리, 스키마, 메트릭 | 같음(특성 테스트와 로컬 스택 비교로 확인) |
+
+이관은 네 단계로 했고, 단계마다 앞 단계 테스트가 그대로 통과해야 다음으로 갔다.
+
+```mermaid
+flowchart LR
+    A["자바 코드에 특성 테스트 추가"] --> B["main 이관, 자바 테스트로 확인"]
+    B --> C["테스트를 코틀린 MockK로 이관"]
+    C --> D["자바 호환 표기 정리"]
+    D --> E["이관 전후 로컬 스택 비교"]
+```
+
+재고 확정 메시지의 필드 누락·null은 이관 전과 같은 결과를 낸다. 결과가 갈리는 지점은 코틀린 표현이 던지는 예외 종류라, 필드마다 자바와 같은 예외가 나게 맞췄다.
+
+| 필드 누락·null | 이관 전후 결과 | 코틀린 처리 |
+|---|---|---|
+| `productId` | NPE로 재시도 뒤 원본 키로 격리 | `!!` |
+| `qty` | 0으로 처리(재고 그대로, 중복 판정 행 남음) | `?: 0` |
+| `orderId`, `occurredAt`, `expiresAt` | 대체값으로 정상 차감 | nullable + `?:` |
+| `idempotencyKey` | 첫 건만 차감, 이후 null 키는 중복으로 무시 | nullable, 지금 동작 유지(질문 8) |
+| 값이 null인 레코드 | 재시도 없이 원본 키로 격리 | 리스너 파라미터 non-null |
+
+### 주요 결정
+
+| 결정 | 이유 | 버린 대안 |
+|---|---|---|
+| 이관 전에 특성 테스트를 자바로 추가하고 실제 MySQL·Kafka·Boot ObjectMapper로 확인 | 코틀린 Jackson의 null 처리와 예외 종류가 Kafka 재시도·격리를 바꿀 수 있는데, 단위 테스트로는 운영 경로를 지나지 않는다 | 기존 테스트만으로 판정 |
+| 구조 유지 + 클래스 안만 코틀린 표현, 코루틴 제외 | 외부 동작을 고정해 회귀를 잡고, 재고 차감의 순서 처리 전제를 지킨다 | 문법만 번역, 코루틴 도입 |
+| record는 처음에 `@JvmRecord data class`, 테스트 이관 뒤 제거 | 자바 테스트를 객체 생성 줄만 고쳐 동작 보존 근거로 쓴다 | 처음부터 일반 data class |
+| Kotlin 2.4.21 + detekt 1.23.8, 도구 실행용 Kotlin 고정 | 최신 안정판 Kotlin을 쓰되 detekt 안정판(Kotlin 2.0.21 빌드)과 Spring BOM의 버전 덮어쓰기 충돌을 푼다 | detekt 2.0 알파, Kotlin 2.0.21로 낮춤 |
+| 판정 1에 단언 3줄 예외(개발자 결정) | 코틀린 non-null `Long`이 자바에서 원시 `long`이라 `.equals` 단언이 컴파일되지 않는다. `==`로만 바꿨다 | id 필드를 임시 nullable |
+
+전체 22개 결정과 근거는 [DESIGN](DESIGN.md#결정)에 있다.
+
+### 검증
+
+| 명령 | 실제 검사 범위 | 실행 | 통과 | 실패 |
+|---|---|---|---|---|
+| `./gradlew :product-service:test --rerun-tasks` | product 단위(ArchUnit 7건 포함) | 70 | 70 | 0 |
+| `./gradlew :product-service:integrationTest --rerun-tasks` | MySQL·EmbeddedKafka 통합(HTTP 계약 17, 확정 메시지 호환 12, 격리 2 포함) | 41 | 41 | 0 |
+| `:product-service:ktlintCheck :product-service:detekt :product-service:spotbugsMain :product-service:spotbugsTest :product-service:checkstyleTest` | 코틀린 main·test 형식·정적 분석 | 통과 | | |
+| `:product-service:jacocoTestCoverageVerification` | 단위 라인 커버리지 97% 게이트 | 68/69줄(98.6%) | 통과 | |
+| 다른 5개 모듈 `test`·`checkstyleMain`·`checkstyleTest`·`spotbugsMain`·`spotbugsTest` | payment·pg·user·gateway·eureka(코드 변경 없음, 단위 테스트는 같은 입력의 이전 결과 재사용) | 1,177 | 1,177 | 0 |
+| `bash scripts/test-hooks.sh` | 편집·종료 hook 판정(코틀린 케이스 6건 포함) | 42 | 42 | 0 |
+| `uv run scripts/check-agent-docs.py --strict`, `scripts/test_check_agent_docs.py` | 문서 참조·식별자, 검사 스크립트 자체 테스트 | 새 문제 0, 19 | 19 | 0 |
+| `actionlint .github/workflows/*.yml` | CI 워크플로 문법 | 통과 | | |
+| `baseline/compare.sh` 이관 전후 + `diff -r -x smoke.log` | gateway 경유 조회, 결제 뒤 재고 확정, 중복 메시지, 재고 부족 격리, `smoke-all.sh --with-trace` 12단계 | 5 시나리오 | 차이 없음 | |
+
+| 요구사항·장애 시나리오 | 확인한 경로(정상·실패·중복·동시성) | 테스트 |
+|---|---|---|
+| R3 HTTP 계약 | 정상 응답 본문 문자열, 404·500 오류 응답, 차감 실패 시 앞 항목 롤백 | `ProductHttpContractIntegrationTest` 17건, 로컬 스택 조회 비교 |
+| R4·FS-1 중복 메시지 | 같은 메시지 2회에 한 번만 차감 | `StockCommitUseCaseTest`, 로컬 스택 중복 시나리오 |
+| R4·FS-2 재고 부족 | 재시도 없이 `orderId:productId` 키로 격리, 재고 유지 | `StockCommitQuarantineIntegrationTest` #1, 로컬 스택 |
+| R5·FS-3 롤백 | 차감 실패 뒤 중복 판정 행 없음, 재시도 시 다시 차감 시도 | `StockCommitMessageCompatibilityIntegrationTest` FS-3 2건, 격리 통합 #2 |
+| FS-4·5·5b·12·13·14 필드 누락·null·모르는 필드·빈 값 레코드 | 호출 횟수, 격리 여부와 키, 원인 예외 헤더, 재고, 중복 판정 행 | `StockCommitMessageCompatibilityIntegrationTest` 10건 |
+| FS-6 순서 처리 | 리스너 동기 함수, Kafka 설정 diff 없음(동시성 테스트는 없음, 코드·설정 대조) | risk-reviewer 대조 |
+| R6 스키마·메트릭·마스킹 | `src/main/resources` diff 없음, 메트릭·마스킹 단위 테스트 | `DependencyHealthMetricsTest`, `MaskingPatternLayoutTest` |
+| R7 정적 분석 게이트 | 위반 코드를 넣어 ktlint·detekt·컴파일 경고가 빌드를 깨는지 확인 | T5 게이트 확인, `test-hooks.sh` |
+| R8 다른 모듈 영향 없음 | 루트 빌드·다른 모듈 diff 없음, 5개 모듈 검사 통과 | 위 표 |
+
+특성 테스트는 지키려는 동작을 일부러 깨뜨려(롤백 제거, 대체값 변경, 예외 종류 변경, 응답 필드 순서 변경) 해당 테스트가 실패하는 것을 확인한 뒤 되돌렸다.
+
+실행하지 못한 검사와 사유: GitHub Actions 실제 실행(푸시하지 않음). `_service-ci.yml`의 Kotlin lint 단계, reviewdog 경로, lint 게이트는 `actionlint`와 로컬 명령으로만 확인했다.
+
+### 리뷰 처리
+
+critical 0 · major 0 · minor 9 (수정 4, 보류 4, 제외 1)
+
+| 지적 | 등급 | 처리 |
+|---|---|---|
+| CI 빌드 단계에서 ktlint 실행 태스크가 꺼지지 않음 | minor | 수정. 재현 뒤 이름 매칭을 넓힘 |
+| 문서·주석 불일치 4곳, D18 서술, hook 검사 재실행 | minor | 수정 |
+| PR 요약에 Kotlin lint 건수 없음, SpotBugs reviewdog 경로, 샤딩 스크립트 경로, 마스킹 설정 연결 테스트 없음 | minor | 보류(TODOS) |
+| 커버리지 여유 1줄 | minor | 제외(정보) |
+
+전체 목록은 [DESIGN의 리뷰 처리](DESIGN.md#리뷰-처리)에 있다.
+
+### 남은 일
+
+- 이관 중 발견한 이관 전부터의 결함과 범위 밖 항목(TODOS): `STOCK-COMMIT-NULL-KEY`(null 키 메시지 무시), `STOCK-DECREASE-INPUT-VALIDATION`(차감 API 입력 검증 없음), `DEDUPE-SHARED-CALENDAR`(공유 Calendar), `KOTLIN-LINT-SUMMARY`, `SPOTBUGS-REVIEWDOG-KOTLIN-PATH`, `INTEGRATION-SHARD-KOTLIN`, `LOGBACK-MASK-WIRING-TEST`
+- CI 실제 실행 확인(푸시 뒤)
+- 다른 서비스 이관은 이번 범위 밖이다. 코루틴은 비동기 코드가 모인 payment-service에서 따로 다룬다
+
+**추적**: [#170](https://github.com/hyoguoo/payment-platform/issues/170) · 브랜치 `refactor/170-kotlin-pilot-product` · PR 없음(푸시 전)

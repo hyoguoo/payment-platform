@@ -5,9 +5,9 @@
 # 실행마다 달라지는 값(주문 번호, 시각)은 결과에서 지우고, 이관 전 결과 디렉토리와 diff 해서 비교한다.
 #
 # 사용법:
-#   bash docs/topics/KOTLIN-PILOT-PRODUCT/baseline/compare.sh docs/topics/KOTLIN-PILOT-PRODUCT/baseline/java
-#   bash docs/topics/KOTLIN-PILOT-PRODUCT/baseline/compare.sh docs/topics/KOTLIN-PILOT-PRODUCT/baseline/kotlin
-#   diff -r -x smoke.log docs/topics/KOTLIN-PILOT-PRODUCT/baseline/java docs/topics/KOTLIN-PILOT-PRODUCT/baseline/kotlin
+#   bash docs/archive/kotlin-pilot-product/baseline/compare.sh docs/archive/kotlin-pilot-product/baseline/java
+#   bash docs/archive/kotlin-pilot-product/baseline/compare.sh docs/archive/kotlin-pilot-product/baseline/kotlin
+#   diff -r -x smoke.log docs/archive/kotlin-pilot-product/baseline/java docs/archive/kotlin-pilot-product/baseline/kotlin
 #   (smoke.log 는 실행마다 다른 trace ID·시각이 섞인 원문이라 비교에서 뺀다)
 #
 # 시나리오:

@@ -13,7 +13,7 @@ import java.time.Instant
  * 구버전 페이로드와의 하위 호환 용도로만 남긴다.
  *
  * 모든 필드를 nullable 로 둔다. 필드가 빠지거나 null 인 메시지도 역직렬화는 성공하고, 처리 결과는 consumer 가
- * 정한다(docs/topics/KOTLIN-PILOT-PRODUCT/DESIGN.md "확정 메시지 필드별 처리"). non-null 로 선언하면 코틀린
+ * 정한다(docs/archive/kotlin-pilot-product/DESIGN.md "확정 메시지 필드별 처리"). non-null 로 선언하면 코틀린
  * Jackson 모듈이 역직렬화를 실패시키고, 그 예외는 재시도 없이 격리되어 처리 결과가 바뀐다.
  *
  * 필드:

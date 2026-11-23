@@ -1,5 +1,5 @@
 # detekt 규칙. 기본 규칙(buildUponDefaultConfig = true) 위에 이 저장소의 기준만 덮어쓴다.
-# 자바 Checkstyle 규칙과의 대응은 docs/topics/KOTLIN-PILOT-PRODUCT/DESIGN.md D6 에 있다.
+# 자바 Checkstyle 규칙과의 대응은 docs/archive/kotlin-pilot-product/DESIGN.md D6 에 있다.
 
 build:
   # 경고 계층을 두지 않는다. 지적이 하나라도 있으면 빌드가 실패한다(루트 Checkstyle maxWarnings = 0 과 같은 원칙).

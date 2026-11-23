@@ -219,7 +219,7 @@ implementer 후보: T6(hook·stack.md), T7(CI). 쓰기 범위가 product-service
     - 검사: `./gradlew :product-service:integrationTest :product-service:test :product-service:checkstyleTest` 통과(통합 41건, 단위 70건, 실패 0)
     - 범위 밖 발견: 차감 API 입력 검증 없음 → TODOS `STOCK-DECREASE-INPUT-VALIDATION`
 - [x] **T4: 이관 전 로컬 스택 기준선 기록**
-  - 변경 위치: `docs/topics/KOTLIN-PILOT-PRODUCT/baseline/` (비교 스크립트와 결과)
+  - 변경 위치: `docs/archive/kotlin-pilot-product/baseline/` (비교 스크립트와 결과)
   - 의존: 없음
   - 완료 기준: 자바 product-service로 판정 4의 5개 시나리오를 실행하고 결과(응답 JSON, 재고 수치, 격리 토픽 메시지, 스모크 결과)를 파일로 남긴다. 같은 스크립트를 ship에서 다시 돌린다 (판정 4)
   - 검증: 스크립트 실행 결과, `bash scripts/smoke-all.sh --with-trace`
