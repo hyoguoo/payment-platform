@@ -1,12 +1,14 @@
 # Technology Stack
 
-버전 표(Java, Gradle, Spring Boot, Spring Cloud, Checkstyle, ArchUnit)와 검증 명령(단위·정적 분석·통합 테스트, `--rerun-tasks`)은
+버전 표(Java, Gradle, Spring Boot, Spring Cloud, Checkstyle, ArchUnit, product-service의 Kotlin·ktlint·detekt)와 검증 명령(단위·정적 분석·통합 테스트, `--rerun-tasks`)은
 [스택 프로필](../../.agents/profiles/stack.md)이 정본이다. 이 문서는 의존성의 쓰임, 인프라 구성, 관측·알람, Flyway 운영을 다룬다.
 검증 hook은 [AGENTS.md의 검증 hook](../../AGENTS.md#검증-hook)과 스택 프로필의 "검증 hook 설정"을, 에이전트 설정은 [.agents/README.md](../../.agents/README.md)를 본다.
 
 ## 의존성
 
-멀티 모듈 6개(`settings.gradle`)이고 모든 모듈이 Lombok을 `compileOnly` + `annotationProcessor`로 쓴다(루트 `build.gradle` subprojects).
+멀티 모듈 6개(`settings.gradle`)이고, 루트 `build.gradle` subprojects가 모든 모듈에 Lombok을 `compileOnly` + `annotationProcessor`로 넣는다.
+product-service는 코틀린 모듈이라 자기 `build.gradle.kts`에서 Lombok을 빼고, Kotlin Gradle 플러그인(`kotlin-jvm`, `kotlin-spring`, `kotlin-jpa`, `allOpen`)을 건다.
+나머지 5개 모듈은 자바다.
 
 비즈니스 서비스 4개(payment, pg, product, user) 공통:
 
@@ -32,7 +34,7 @@ archunit-junit5 (루트, 레이어 규칙)
 |---|---|
 | payment-service | `spring-boot-starter-aop`(`@PublishDomainEvent`, `@PaymentStatusChange`), `spring-boot-starter-validation`, `spring-boot-starter-data-redis`(재고 캐시 Lua + 멱등성 저장소), `spring-kafka`, `caffeine`(`IdempotencyStore` 구현), `querydsl-jpa:jakarta`(관리자 조회), `spring-cloud-starter-openfeign` + `spring-cloud-starter-loadbalancer`(`ProductFeignClient`·`UserFeignClient`), thymeleaf, springdoc-openapi, `logstash-logback-encoder`, 테스트 `spring-kafka-test` |
 | pg-service | `spring-boot-starter-aop`, `spring-kafka`, 테스트 `okhttp3:mockwebserver`(`HttpOperatorImpl` traceparent 전파 테스트). `FakePgGatewayStrategy`는 `pg.gateway.type=fake`일 때 활성화 |
-| product-service | `spring-kafka`(재고 확정 소비·격리 토픽), 테스트 `spring-kafka-test` |
+| product-service | `spring-kafka`(재고 확정 소비·격리 토픽), `kotlin-reflect`·`jackson-module-kotlin`(Spring이 코틀린 클래스를 JSON으로 읽고 쓸 때), 테스트 `spring-kafka-test`, MockK(`mockk-jvm`), springmockk(`@MockkBean`·`@SpykBean`) |
 | user-service | 공통 의존만 |
 | gateway | `spring-cloud-starter-gateway`(webflux 기반 라우팅 전용), eureka client, actuator, prometheus, `logstash-logback-encoder`, OTel 트레이싱 |
 | eureka-server | `spring-cloud-starter-netflix-eureka-server`, actuator, prometheus, `logstash-logback-encoder` |
@@ -240,12 +242,13 @@ SELECT version, script, installed_on, success FROM flyway_schema_history ORDER B
 
 | 도구 | 설정 |
 |---|---|
-| Checkstyle | `config/checkstyle/checkstyle.xml` + 커스텀 Check `config/checkstyle/custom-checks/`. 버전은 [스택 프로필](../../.agents/profiles/stack.md) |
+| Checkstyle | `config/checkstyle/checkstyle.xml` + 커스텀 Check `config/checkstyle/custom-checks/`. 버전은 [스택 프로필](../../.agents/profiles/stack.md). 자바 소스만 검사한다 |
+| ktlint, detekt (product-service) | 형식은 ktlint(루트 `.editorconfig`, 줄 길이 120), 정적 분석은 detekt(`config/detekt/detekt.yml`, `maxIssues: 0`). detekt 1.23.8은 Kotlin 2.0.21로 빌드돼 있어 detekt 실행용 Kotlin을 고정하고, 타입 분석이 필요한 `detektMain`·`detektTest`는 쓰지 않는다. 편집 hook은 `config/lint-file.sh`가 `.kt`·`.kts`를 `config/ktlint/check-file.sh`로 보낸다 |
 | SpotBugs (플러그인 6.0.9) | `config/spotbugs/spotbugs-exclude.xml`(main), `spotbugs-exclude-test.xml`(test) |
 | ArchUnit | 레이어 규칙의 정의처는 `config/archunit/`이고 서비스들이 공유한다 |
 | JaCoCo (0.8.11) | 측정 대상·제외·게이트 산정은 [TESTING.md](TESTING.md)의 "JaCoCo 커버리지 정책"이 정본 |
 
-**코드 스타일 5규칙 자동 검출**: [code-style.md](conventions/code-style.md)의 규칙을 Checkstyle이 검출한다. 다섯 규칙 모두 `severity=error`이고 `maxWarnings = 0`(`build.gradle:138`)이라 경고 계층이 없다. 규칙은 빌드를 깨뜨리거나 아예 없거나 둘 중 하나다.
+**코드 스타일 5규칙 자동 검출(자바 모듈)**: [code-style.md](conventions/code-style.md)의 규칙을 Checkstyle이 검출한다. product-service(코틀린)에서는 줄 길이를 ktlint·detekt가, 광범위 예외 삼킴을 detekt `TooGenericExceptionCaught`·`SwallowedException`이 맡는다. `var`·`@Data`·`return null` 금지는 코틀린 문법이 대신하고, try 블록 외부 재할당 금지는 대응 규칙 없이 `try` 식으로 쓴다. 다섯 규칙 모두 `severity=error`이고 `maxWarnings = 0`(`build.gradle:138`)이라 경고 계층이 없다. 규칙은 빌드를 깨뜨리거나 아예 없거나 둘 중 하나다.
 
 - 문자열 판정 3종(`RegexpSinglelineJava`): 타입 추론 키워드(`var`) 금지, `@Data` 금지, 공개 유스케이스·포트의 null 반환 금지
 - 구조 판정 2종(커스텀 `TreeWalker` Check): 광범위 예외 삼킴 금지(`SwallowedBroadException`), try 블록 외부 변수 재할당 금지(`TryBlockExternalReassignment`)
@@ -265,9 +268,9 @@ PR과 main push마다 6서비스(payment / pg / product / user / gateway / eurek
 
 - **`.github/workflows/ci.yml`** (진입): 6서비스를 재사용 워크플로우로 각각 호출한다(`service`, `has-integration`, payment·pg의 `integration-shards`·`integration-shard-count`). 마지막에 취합 `report` job이 있다.
 - **`.github/workflows/_service-ci.yml`** (재사용, `workflow_call`): 서비스 1개 파이프라인이다.
-  - `build-test-lint` job(항상): `./gradlew :<svc>:build`에서 통합 테스트·Checkstyle·SpotBugs를 제외해 컴파일과 단위 테스트, JaCoCo를 돌리고, 별도 step에서 Checkstyle·SpotBugs를 실행한다. 이어 reviewdog 인라인 코멘트, JaCoCo·lint 요약 아티팩트, lint gate를 처리한다.
+  - `build-test-lint` job(항상): `./gradlew :<svc>:build`에서 통합 테스트·Checkstyle·SpotBugs를 제외해 컴파일과 단위 테스트, JaCoCo를 돌리고, 별도 step에서 Checkstyle·SpotBugs를 실행한다. 이어 reviewdog 인라인 코멘트, JaCoCo·lint 요약 아티팩트, lint gate를 처리한다. 입력 `kotlin-lint`가 true인 product-service는 빌드 단계에 `-PskipKotlinLint`를 넘겨 ktlint·detekt를 빼고, 별도 step에서 `ktlintCheck`·`detekt`를 돌려 reviewdog(checkstyle 형식)와 lint gate에 넣는다. lint 요약 아티팩트에는 ktlint·detekt 건수가 없다(TODOS `KOTLIN-LINT-SUMMARY`).
   - `integration-test` job(`has-integration`이 true인 payment / pg / product / user): payment 3개, pg 2개 shard이고 product·user는 shard 없이 1개 job이다. 분할 job은 `testClasses` 후 `scripts/ci-integration-shard.py`가 컴파일된 최상위 클래스마다 shard를 정하고 Gradle `--tests`로 선택한다. `DOCKER_API_VERSION=1.44`를 쓰고 shard별 JUnit Check를 게시하며 `fail-fast: false`다. gateway와 eureka는 통합 job이 없다. **Testcontainers reuse는 CI에서 끈다.** 같은 job 안의 여러 `@SpringBootTest` 클래스가 재사용 컨테이너의 더럽혀진 스키마에 Flyway를 다시 적용하면 "non-empty schema but no schema history table"로 컨텍스트 로드가 깨지기 때문이다.
 - **`agent-docs-check` job**: 6서비스 fan-out과 별개인 단일 job이다. `scripts/check-agent-docs.py`를 인자 없는 정보 보고 모드로 돌려 결과를 job 로그와 요약에 남기고(실패시키지 않는다), `sync-agent-configs.py --check`(역할 원본과 생성 파일이 다르면 실패)와 `scripts/test_check_agent_docs.py`를 실행한다.
-- **`hook-guardrail-check` job**: 단일 job이고 **게이트다.** `scripts/test-hooks.sh`로 검증 hook의 판정을 확인하며, Java 21·Gradle과 `writeCheckstyleCliClasspath` 단계를 포함한다.
+- **`hook-guardrail-check` job**: 단일 job이고 **게이트다.** `scripts/test-hooks.sh`로 검증 hook의 판정을 확인하며, Java 21·Gradle과 `writeCheckstyleCliClasspath` 단계를 포함한다. ktlint CLI classpath(`:product-service:writeKtlintCliClasspath`)는 `test-hooks.sh`가 스스로 만든다.
 - **취합 `report` job**: 6서비스 아티팩트를 `actions/github-script` + `.github/scripts/report-comment.js`로 모아 PR에 통합 코멘트 하나(커버리지, 테스트 수, lint 요약)를 갱신한다. 일부 서비스가 실패해도 `always()`로 코멘트는 남기며 머지 판정에는 쓰이지 않는다.
 - 머지 차단은 각 서비스 `build-test-lint`와 모든 `integration-test` shard의 결과로 정해진다. GitHub branch protection의 required status checks에 각 job을 등록하는 것이 전제다.

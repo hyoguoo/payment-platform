@@ -501,7 +501,7 @@ sequenceDiagram
 
 ## 🛠 사용 기술 스택
 
-- **Language / Runtime**: Java 21 (Virtual Threads), Spring Boot 3.4.4, Spring Cloud 2024.0.0
+- **Language / Runtime**: Java 21 (Virtual Threads), Kotlin 2.4 (product-service), Spring Boot 3.4.4, Spring Cloud 2024.0.0
 - **Persistence**: MySQL 8.0 × 4 (DB per service), Flyway, JPA + QueryDSL
 - **Messaging / Cache**: Kafka (KRaft, broker 1대), Redis × 2 (dedupe + redis-stock 분리)
 - **Service Discovery / Routing**: Eureka, Spring Cloud Gateway, OpenFeign + Spring Cloud LoadBalancer
