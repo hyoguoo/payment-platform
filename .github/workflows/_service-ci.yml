@@ -19,6 +19,10 @@ on:
         description: '통합 테스트 shard 총 개수'
         type: number
         default: 1
+      kotlin-lint:
+        description: '코틀린 모듈 여부 — true 이면 ktlintCheck·detekt 를 lint 게이트에 넣는다'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -48,12 +52,15 @@ jobs:
       # lint(checkstyle/spotbugs)도 제외한다 — build(check)가 끌어오면 위반 시 이 step 에서 죽어
       # reviewdog 인라인·lint gate 흐름이 깨지고, lint 를 별도 step 과 중복 실행하게 된다.
       # 이 step 은 컴파일+단위+JaCoCo 게이트만 책임지고, lint 는 아래 전용 step 이 담당한다.
+      # 코틀린 모듈은 ktlint·detekt 검사도 check 에 붙어 있어 함께 뺀다. ktlint 플러그인이 소스 셋별 태스크를
+      # check 에 직접 붙여 -x 로는 다 빠지지 않으므로, 모듈 빌드가 읽는 skipKotlinLint 속성으로 끈다.
       - name: Build & Unit Test (통합·lint 제외)
         run: >-
           ./gradlew :${{ inputs.service }}:build
           -x integrationTest
           -x checkstyleMain -x checkstyleTest
           -x spotbugsMain -x spotbugsTest
+          ${{ inputs.kotlin-lint && '-PskipKotlinLint' || '' }}
 
       # ── 단위 테스트 JUnit Check 리포트 ─────────────────────────────────────
       # main ci.yml 에서 보존돼야 하는 현행 동작 — 단위 테스트 실패의 인라인 Check 가시성.
@@ -81,6 +88,14 @@ jobs:
         run: ./gradlew :${{ inputs.service }}:spotbugsMain :${{ inputs.service }}:spotbugsTest --continue
         continue-on-error: true
 
+      # ── Kotlin lint (ktlint·detekt, 코틀린 모듈만) ─────────────────────────
+      # --continue 동일 이유. 두 도구 모두 checkstyle 형식 XML 을 남겨 아래 reviewdog checkstyle 경로를 그대로 쓴다.
+      - name: Run Kotlin lint
+        id: kotlinlint
+        if: ${{ inputs.kotlin-lint }}
+        run: ./gradlew :${{ inputs.service }}:ktlintCheck :${{ inputs.service }}:detekt --continue
+        continue-on-error: true
+
       # ── reviewdog setup ─────────────────────────────────────────────────────
       - name: Setup reviewdog
         uses: reviewdog/action-setup@v1.5
@@ -97,6 +112,22 @@ jobs:
             file="${{ inputs.service }}/build/reports/checkstyle/${report}.xml"
             if [ -f "$file" ]; then
               reviewdog -f=checkstyle -name="Checkstyle (${{ inputs.service }}/${report})" \
+                -reporter=github-pr-review -filter-mode=file -fail-on-error=false \
+                < "$file"
+            fi
+          done
+
+      # ── reviewdog — Kotlin lint (코틀린 모듈만, 서비스별 인라인) ───────────
+      - name: Reviewdog — Kotlin lint
+        if: always() && inputs.kotlin-lint && github.event_name == 'pull_request'
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for file in ${{ inputs.service }}/build/reports/ktlint/*/*.xml \
+                      ${{ inputs.service }}/build/reports/detekt/detekt.xml; do
+            if [ -f "$file" ]; then
+              label=$(basename "$file" .xml)
+              reviewdog -f=checkstyle -name="Kotlin lint (${{ inputs.service }}/${label})" \
                 -reporter=github-pr-review -filter-mode=file -fail-on-error=false \
                 < "$file"
             fi
@@ -185,13 +216,15 @@ jobs:
           retention-days: 1
 
       # ── Lint gate (현행 ci.yml 로직 보존) ─────────────────────────────────
-      # PR / push 모두 전수 게이트 — checkstyle/spotbugs task 위반 시 fail.
+      # PR / push 모두 전수 게이트 — checkstyle/spotbugs/kotlin lint task 위반 시 fail.
       # reviewdog 는 인라인 안내(filter-mode=file)만 담당하고 차단은 이 게이트가 책임진다.
+      # Kotlin lint 는 kotlin-lint 가 false 인 모듈에서 skipped 이므로 failure 일 때만 막는다.
       - name: Fail on violations (lint gate)
         if: always()
         run: |
           if [ "${{ steps.checkstyle.outcome }}" != "success" ] || \
-             [ "${{ steps.spotbugs.outcome }}" != "success" ]; then
+             [ "${{ steps.spotbugs.outcome }}" != "success" ] || \
+             [ "${{ steps.kotlinlint.outcome }}" = "failure" ]; then
             echo "Lint violations found."
             exit 1
           fi

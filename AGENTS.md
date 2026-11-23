@@ -3,7 +3,7 @@
 서버 백엔드 프로젝트다. 스택과 검증 명령은 [.agents/profiles/stack.md](.agents/profiles/stack.md),
 지켜야 할 불변식과 핵심 경로는 [.agents/profiles/risk.md](.agents/profiles/risk.md)에 있다.
 
-결제 도메인 학습용 Java 21 / Spring Boot 멀티모듈 프로젝트다. 비즈니스 서비스는 `payment-service`, `pg-service`,
+결제 도메인 학습용 Java 21·Kotlin(product-service) / Spring Boot 멀티모듈 프로젝트다. 비즈니스 서비스는 `payment-service`, `pg-service`,
 `product-service`, `user-service`이고 `gateway`, `eureka-server`가 진입점과 서비스 탐색을 맡는다.
 Claude Code와 Codex가 이 지침과 `.agents/`의 스킬·역할을 함께 쓴다. 도구별 운영은 [.agents/README.md](.agents/README.md)에 있다.
 

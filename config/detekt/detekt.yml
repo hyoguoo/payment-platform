@@ -1,0 +1,22 @@
+# detekt 규칙. 기본 규칙(buildUponDefaultConfig = true) 위에 이 저장소의 기준만 덮어쓴다.
+# 자바 Checkstyle 규칙과의 대응은 docs/archive/kotlin-pilot-product/DESIGN.md D6 에 있다.
+
+build:
+  # 경고 계층을 두지 않는다. 지적이 하나라도 있으면 빌드가 실패한다(루트 Checkstyle maxWarnings = 0 과 같은 원칙).
+  maxIssues: 0
+
+style:
+  # 자바 Checkstyle LineLength 120 과 맞춘다
+  MaxLineLength:
+    maxLineLength: 120
+  # 자바 Checkstyle 의 var 금지는 지역 변수 타입 추론 키워드를 막아 타입을 드러내게 하는 규칙이다.
+  # 코틀린의 var 는 변경 가능 여부를 뜻해 목적이 다르므로 대응 규칙을 두지 않는다.
+  # (VarCouldBeVal 은 타입 분석이 필요해 이 빌드의 detekt 태스크에서는 돌지 않는다.)
+
+exceptions:
+  # 광범위 예외 삼킴 금지(커스텀 Checkstyle SwallowedBroadExceptionCheck)에 대응한다.
+  # 의도된 광범위 catch 는 @Suppress 와 이유 주석으로 남긴다.
+  TooGenericExceptionCaught:
+    active: true
+  SwallowedException:
+    active: true

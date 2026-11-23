@@ -70,3 +70,4 @@
 | [pg-inbox-index-merge](pg-inbox-index-merge/COMPLETION-BRIEFING.md) | 힌트 없는 index_merge·데드락 재현 | 완료 | 실험 2026-10-01 · 이관 2026-10-02 |  |
 | [agent-structure-overhaul](agent-structure-overhaul/BRIEF.md) | 에이전트 지침을 agent-backend-kit 구조로 바꾸고 프로젝트 문서를 현재 코드 기준으로 정리 | 완료 | 2026-11-06 | #163 |
 | [payment-throughput](payment-throughput/BRIEF.md) | 결제 처리량 한계 측정과 병목 개선 (측정 도구 두 시험, 결과 소비·pg 명령 소비 동시성, pg 워커 상한 복원과 기본값, 중복 승인 보정 트랜잭션 분리. 처리 용량 경계 120~140 → 180~200/s) | 완료 | 2026-10-28 ~ 2026-11-16 | #162, #165, #166, #167 |
+| [kotlin-pilot-product](kotlin-pilot-product/BRIEF.md) | product-service를 코틀린으로 이관 (이관 전 특성 테스트, main·테스트 코틀린 이관과 Lombok 제거, Kotlin DSL 빌드, ktlint·detekt 게이트와 hook·CI 반영. 외부 동작과 로컬 스택 결과 동일) | 완료 | 2026-11-22 ~ 2026-11-23 | #170 |

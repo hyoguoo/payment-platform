@@ -53,7 +53,7 @@ IDENTIFIER_ROOTS = ["docs/context", "docs/guides", "docs/smoke", "docs/quality",
 # 백틱 단독 스팬에서 경로로 인정하는 확장자. 웹 자산(.html/.css/.js/.ts)은 별도 blog 저장소·브라우저 URL
 # 예시에서 반복되는 오탐 원인이라 제외한다. 그런 경로는 마크다운 링크로 쓰지 않는다.
 BACKTICK_PATH_EXTENSIONS = {
-    ".md", ".sh", ".py", ".java", ".yml", ".yaml", ".json", ".properties",
+    ".md", ".sh", ".py", ".java", ".kt", ".kts", ".yml", ".yaml", ".json", ".properties",
     ".gradle", ".toml", ".conf", ".sql", ".txt", ".lua",
 }
 
@@ -78,7 +78,7 @@ FILE_SUFFIXES = {
 CODE_SKIP_DIRS = {".git", "build", ".gradle", "node_modules", "docs", "live-drill", ".archive", ".idea"}
 ROOT_ONLY_SKIP_DIRS = {"out"}
 # 대문자 시작 단어를 모으는 파일. 알람 규칙 이름(YAML), Checkstyle 모듈 이름(XML), hook 이벤트 이름(JSON)도 여기서 온다.
-CODE_TOKEN_SUFFIXES = {".java", ".gradle", ".kts", ".yml", ".yaml", ".xml", ".json", ".properties"}
+CODE_TOKEN_SUFFIXES = {".java", ".kt", ".gradle", ".kts", ".yml", ".yaml", ".xml", ".json", ".properties"}
 # 우리 코드는 쓰지 않지만 문서가 동작을 설명하는 외부 라이브러리 타입. 삭제된 우리 클래스를 가리지 않도록
 # 실제 라이브러리 타입만 넣는다.
 EXTERNAL_TYPE_NAMES = {
@@ -98,7 +98,7 @@ EXTERNAL_CONFIG_KEYS = {
 }
 CONFIG_CORPUS_SUFFIXES = {
     ".yml", ".yaml", ".properties", ".java", ".sh", ".py", ".js", ".json", ".conf", ".toml",
-    ".gradle", ".lua", ".sql", ".xml", ".env",
+    ".gradle", ".kt", ".kts", ".lua", ".sql", ".xml", ".env",
 }
 
 # 판정 4: Mermaid 노드·엣지 라벨 금지 문자 (사용자 수준 writing 스킬 core 8절의 Mermaid 규칙 중 이 스크립트가 판정하는 부분집합)
@@ -329,7 +329,7 @@ XML_COMMENT_RE = re.compile(r'<!--.*?-->', re.S)
 
 def strip_non_code(path, text):
     """주석과 문자열 리터럴을 걷어 낸다. 주석에만 남은 옛 이름이 "코드에 있음"으로 통과하지 않게 한다."""
-    if path.suffix in {".java", ".gradle", ".kts"}:
+    if path.suffix in {".java", ".kt", ".gradle", ".kts"}:
         text = JAVA_STRING_RE.sub('""', text)
         text = JAVA_BLOCK_COMMENT_RE.sub(" ", text)
         return JAVA_LINE_COMMENT_RE.sub(" ", text)

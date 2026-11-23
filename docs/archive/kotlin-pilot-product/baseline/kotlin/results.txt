@@ -1,0 +1,5 @@
+get-one status=200 get-missing status=404
+payment confirm=202 final=DONE product1-stock=decreased-by-1
+duplicate stock=8 dedupe-rows=1
+insufficient dlq-key=ORDER:9902 stock=1
+smoke exit=0 steps=12

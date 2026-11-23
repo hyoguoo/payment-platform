@@ -11,7 +11,8 @@ Java 단위/통합 테스트와 별개이며 [운영 기준](../quality/RUNBOOK.
 ## 테스트 프레임워크
 
 - JUnit 5 (Jupiter) — `spring-boot-starter-test`
-- Mockito — Spring Boot Test 번들 포함
+- Mockito — Spring Boot Test 번들 포함(자바 모듈)
+- MockK·springmockk — product-service(코틀린) 테스트의 목 객체와 Spring 빈 목(`@MockkBean`, `@SpykBean`). 아래 Mockito 예시는 product-service에서 MockK로 읽는다(`given(...)` → `every { }`, `verify(times(n))` → `verify(exactly = n)`). product-service 테스트는 `src/test/kotlin`에 있다
 - AssertJ — 가독성 우선
 - Testcontainers (`org.testcontainers:mysql` + Redis는 `GenericContainer`) — 통합 테스트용 MySQL·Redis 컨테이너
 - Spring Kafka Test (`spring-kafka-test`, payment·product) — 통합 테스트의 `@EmbeddedKafka`

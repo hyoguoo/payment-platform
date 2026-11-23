@@ -21,4 +21,14 @@
         <Class name="~.*ConcurrencyIntegrationTest"/>
     </Match>
 
+    <!--
+        product-service 코틀린 테스트 코드가 만드는 오탐. 코틀린 컴파일러가 lateinit 프로퍼티 접근에 넣는 초기화 검사와
+        Intrinsics 의 null 검사, 자바 API 의 플랫폼 타입 접근, 목 빈 프로퍼티의 접근자를 SpotBugs 가 null 경로·노출 필드로 본다.
+        product 패키지의 *Test 클래스와 이 버그 패턴에만 적용한다(docs/archive/kotlin-pilot-product/DESIGN.md D18).
+    -->
+    <Match>
+        <Class name="~com\.hyoguoo\.paymentplatform\.product\..*Test"/>
+        <Bug pattern="NP_NULL_ON_SOME_PATH,NP_NULL_PARAM_DEREF,NP_NONNULL_RETURN_VIOLATION,PA_PUBLIC_PRIMITIVE_ATTRIBUTE,RCN_REDUNDANT_NULLCHECK_OF_NONNULL_VALUE,RCN_REDUNDANT_NULLCHECK_WOULD_HAVE_BEEN_A_NPE,BC_BAD_CAST_TO_ABSTRACT_COLLECTION,OBL_UNSATISFIED_OBLIGATION"/>
+    </Match>
+
 </FindBugsFilter>

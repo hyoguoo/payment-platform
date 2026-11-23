@@ -1,0 +1,10 @@
+root = true
+
+# 코틀린 소스와 Gradle Kotlin DSL 의 형식 규칙(ktlint 가 읽는다).
+# 줄 길이는 자바 Checkstyle(LineLength 120)과 맞춘다.
+[*.{kt,kts}]
+indent_style = space
+indent_size = 4
+max_line_length = 120
+insert_final_newline = true
+ktlint_code_style = ktlint_official

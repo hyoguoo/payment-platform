@@ -1,4 +1,4 @@
-# 스택 프로필: Java · Spring Boot · Gradle 멀티모듈
+# 스택 프로필: Java · Kotlin · Spring Boot · Gradle 멀티모듈
 
 검증 명령과 코드 규칙의 정본이다. 스택이 바뀌면 이 파일과 `config/`의 도구 설정만 바꾼다.
 `.agents/hooks/`의 스크립트는 스택과 무관하며 아래 "검증 hook 설정" 블록만 읽는다.
@@ -11,9 +11,17 @@
 | Spring Cloud | 2024.0.0 |
 | Checkstyle | 10.17.0 |
 | ArchUnit | 1.3.0 |
+| Kotlin | 2.4.21 (product-service) |
+| ktlint | 1.8.0 (Gradle 플러그인 14.2.0, product-service) |
+| detekt | 1.23.8 (product-service) |
 
-버전의 정의처는 루트 `build.gradle`(플러그인, `ext.checkstyleVersion`), 서비스별 `build.gradle`(`springCloudVersion`),
-`gradle/wrapper/gradle-wrapper.properties`다. 버전을 올리면 이 표도 함께 고친다.
+버전의 정의처는 루트 `build.gradle`(플러그인, `ext.checkstyleVersion`), 서비스별 `build.gradle`·`build.gradle.kts`
+(`springCloudVersion`, product-service의 Kotlin·ktlint·detekt), `gradle/wrapper/gradle-wrapper.properties`다.
+버전을 올리면 이 표도 함께 고친다.
+
+product-service는 코틀린 모듈이다. Spring Boot BOM이 Kotlin을 1.9.25로 관리하므로 `build.gradle.kts`가 `kotlin.version`을
+덮어쓰고, detekt·ktlint 실행용 classpath는 각 도구가 요구한 Kotlin 버전을 쓰도록 따로 고정한다. 이 고정을 지우면
+detekt는 실행을 거부하고 ktlint는 파싱에 실패한다.
 
 ## 모듈
 
@@ -36,7 +44,8 @@
 | 단계 | 명령 | 언제 | 누가 |
 |---|---|---|---|
 | 단위 테스트 | `./gradlew :<module>:test` | 코드 변경이 있으면 항상. ArchUnit 레이어 규칙도 여기서 돈다. Docker 없이 돈다 | 종료 hook이 강제. 에이전트도 태스크마다 실행 |
-| 정적 분석 | `./gradlew :<module>:checkstyleMain :<module>:checkstyleTest :<module>:spotbugsMain :<module>:spotbugsTest` | Java 변경이 있으면. CI 기준은 `.github/workflows/_service-ci.yml` | 에이전트. 파일 단위 Checkstyle은 편집 hook이 바로 잡는다 |
+| 정적 분석(Java) | `./gradlew :<module>:checkstyleMain :<module>:checkstyleTest :<module>:spotbugsMain :<module>:spotbugsTest` | Java 변경이 있으면. CI 기준은 `.github/workflows/_service-ci.yml` | 에이전트. 파일 단위 Checkstyle은 편집 hook이 바로 잡는다 |
+| 정적 분석(Kotlin) | `./gradlew :product-service:ktlintCheck :product-service:detekt :product-service:spotbugsMain :product-service:spotbugsTest` | product-service의 `.kt`·`.kts` 변경이 있으면. 자바 소스가 남아 있으면 위 Checkstyle도 함께 돌린다 | 에이전트. 파일 단위 ktlint는 편집 hook이 바로 잡는다 |
 | 통합 테스트 | `./gradlew :<module>:integrationTest` | DB, Redis, Kafka, Spring 설정·배선, Redis Lua 스크립트, 저장소 쿼리·구현을 바꿨으면. 종료 hook은 `.lua`를 보지 않고 Lua·저장소 테스트는 통합 테스트에만 있다. `@Tag("integration")` 테스트만 돈다. Docker(Testcontainers)가 필요하다 | 에이전트 |
 | 스모크 | `bash scripts/smoke-all.sh` (트레이스까지 보려면 `--with-trace`) | Compose, Kafka 토픽, 관측·알람 규칙 같은 런타임 설정을 바꿨으면. 띄운 로컬 스택이 필요하다. 개별 가이드는 [docs/smoke/](../../docs/smoke/) | 에이전트. 스택을 띄울 수 없으면 사유를 보고한다 |
 | 재실행 | 위 명령에 `--rerun-tasks` | 외부 상태 때문에 캐시된 결과를 믿을 수 없을 때. 통합 테스트가 `UP-TO-DATE`로 건너뛰어졌을 때 | 에이전트 |
@@ -57,12 +66,12 @@
 BASE_BRANCH=main
 MODULES=payment-service pg-service product-service user-service gateway eureka-server
 ROOT_FILES=build.gradle settings.gradle gradle.properties gradle/ config/
-VERIFY_PATTERN=\.(java|sql|gradle|ya?ml|properties)$
+VERIFY_PATTERN=\.(java|kts?|sql|gradle|ya?ml|properties)$
 UNIT_TEST=./gradlew --console=plain {tasks}
 UNIT_TEST_TASK=:{m}:test
 TEST_REPORTS={m}/build/test-results/test/*.xml
-LINT_FILE_PATTERN=\.java$
-LINT_FILE=config/checkstyle/check-file.sh {file}
+LINT_FILE_PATTERN=\.(java|kts?)$
+LINT_FILE=config/lint-file.sh {file}
 ```
 
 | 키 | 뜻 |
@@ -74,7 +83,7 @@ LINT_FILE=config/checkstyle/check-file.sh {file}
 | `UNIT_TEST` | 단위 테스트 명령. 멀티모듈이면 `{tasks}` 자리에 모듈별 태스크가 들어간다 (예: `./gradlew --console=plain {tasks}`) |
 | `UNIT_TEST_TASK` | 멀티모듈 전용. 모듈마다 `{m}`을 모듈 경로로 채운다 (예: `:{m}:test`) |
 | `TEST_REPORTS` | 실패 테스트 이름을 뽑을 JUnit XML 위치. 멀티모듈이면 `{m}`을 쓸 수 있다. 없으면 빌드 출력 끝부분을 보여 준다 |
-| `LINT_FILE_PATTERN`, `LINT_FILE` | 편집 직후 파일 하나를 검사하는 명령. `{file}`은 절대 경로다. 종료 코드 0 위반 없음, 1 위반 있음, 그 밖은 도구 실패(막지 않음) |
+| `LINT_FILE_PATTERN`, `LINT_FILE` | 편집 직후 파일 하나를 검사하는 명령. `{file}`은 절대 경로다. 종료 코드 0 위반 없음, 1 위반 있음, 그 밖은 도구 실패(막지 않음). 이 저장소는 `config/lint-file.sh`가 확장자에 따라 Checkstyle(`.java`)과 ktlint(`.kt`, `.kts`)로 나눠 보낸다 |
 
 hook의 동작과 일시정지 규칙은 [AGENTS.md의 검증 hook](../../AGENTS.md#검증-hook)에 있다.
 

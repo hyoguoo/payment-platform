@@ -45,7 +45,7 @@ Kafka 메시지 계약(이벤트 DTO, 토픽 상수)과 엔티티 매핑은 포�
 | `payment-service/src/main/resources/lua/**` | INV-5 |
 | `pg-service/src/main/java/**/pg/domain/**`, `**/pg/application/{service,port,util,messaging}/**`, `**/pg/application/dto/event/**` | INV-1, INV-3, INV-4, INV-6 |
 | `pg-service/src/main/java/**/pg/infrastructure/{gateway,http,messaging,repository,entity,scheduler,channel,listener,config}/**` | INV-1, INV-3, INV-4, INV-6 |
-| `product-service/src/main/java/**/*Stock*`, `**/product/infrastructure/{messaging,idempotency,scheduler}/**`, `**/product/infrastructure/config/Kafka*`, `**/product/application/port/out/EventDedupeStore*` | INV-5 |
+| `product-service/src/main/{java,kotlin}/**/*Stock*`, `**/product/infrastructure/{messaging,idempotency,scheduler}/**`, `**/product/infrastructure/config/Kafka*`, `**/product/application/port/out/EventDedupeStore*` | INV-5 |
 | `*/src/main/resources/db/migration/**`, `*/src/main/resources/db/schema/**` | 데이터 전체 |
 | `*/src/main/resources/application*.yml` 중 Kafka·트랜잭션·재시도·타임아웃 설정 | INV-1, INV-5, INV-6 |
 

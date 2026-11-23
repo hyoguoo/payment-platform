@@ -12,7 +12,7 @@
 | [PITFALLS.md](PITFALLS.md) | 실제로 겪은 함정과 수용한 한계 | 상태 전이·동시성·시간·Kafka를 건드리기 전 |
 | [TESTING.md](TESTING.md) | 테스트 분류, Fake·Mock 사용, Testcontainers 패턴, JaCoCo 정책 | 테스트를 쓰거나 구성을 바꿀 때 |
 | [STACK.md](STACK.md) | 인프라 구성, Compose 파일, 관측·알람, Flyway 운영 | 인프라·설정·마이그레이션을 바꿀 때 |
-| [conventions/code-style.md](conventions/code-style.md) | Lombok·Builder, record DTO, 이름, 주석, 안티패턴 | Java 코드를 쓸 때 |
+| [conventions/code-style.md](conventions/code-style.md) | Lombok·Builder, record DTO, 이름, 주석, 안티패턴(자바 모듈). product-service 코틀린 규칙은 이 문서의 "코틀린 모듈" 절 | 코드를 쓸 때 |
 | [conventions/error-logging.md](conventions/error-logging.md) | 예외 계층, LogFmt와 trace, AOP | 예외·로그를 다룰 때 |
 | [conventions/transactions.md](conventions/transactions.md) | 트랜잭션과 Hikari, `@Transactional(timeout)` 정책 | 트랜잭션 경계를 바꿀 때 |
 | [conventions/kafka.md](conventions/kafka.md) | Consumer group, 재시도·DLQ, 타임아웃 정렬 | Kafka 소비자를 바꿀 때 |

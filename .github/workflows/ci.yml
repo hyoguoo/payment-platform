@@ -45,6 +45,7 @@ jobs:
     with:
       service: product-service
       has-integration: true
+      kotlin-lint: true
     secrets: inherit
 
   user:

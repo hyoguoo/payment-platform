@@ -1,6 +1,18 @@
 # Coding Conventions — Code Style
 
 > Lombok/Builder, Record DTO, Naming, 주석/문서화, 안티패턴 회피.
+> Lombok·Builder·record 규칙은 자바 모듈(payment, pg, user, gateway, eureka) 대상이다. product-service(코틀린)는 아래 "코틀린 모듈" 절을 따른다.
+
+## 코틀린 모듈 (product-service)
+
+- Lombok을 쓰지 않는다. 생성자 주입은 주 생성자, 빌더 대신 주 생성자와 이름 붙인 인자를 쓴다.
+- DTO와 메시지는 `data class`, JPA 엔티티는 일반 `class`다. 엔티티를 data class로 만들지 않는다(생성된 `equals`·`hashCode`가 지연 로딩 프록시와 영속 전 상태에서 어긋난다). 기본 생성자와 open 클래스는 `kotlin-jpa`·`allOpen` 플러그인이 만든다.
+- `@Transactional`·`@Configuration` 클래스는 `kotlin-spring` 플러그인이 open으로 만든다. 직접 `open`을 붙이지 않는다.
+- 외부 입력(HTTP 요청, Kafka 메시지)의 필드는 자바에서 null이 들어올 수 있던 그대로 nullable로 둔다. non-null로 선언하면 코틀린 Jackson 모듈이 역직렬화를 실패시켜 응답이나 Kafka 재시도·격리 결과가 바뀐다.
+- Kafka 소비 경로에서 null을 처리하는 코틀린 표현은 던지는 예외로 재시도 여부가 정해진다. `require`·`requireNotNull`은 IllegalArgumentException(재시도 없이 격리), `check`·`error`는 IllegalStateException(재시도), `!!`는 NullPointerException(재시도)이고, `?: return`은 메시지를 조용히 버린다. 재시도 제외 목록은 `KafkaErrorHandlerConfig`에 있다.
+- 리스너·스케줄러·컨트롤러는 동기 함수다. 재고 확정의 잠금 없는 차감은 같은 상품을 컨슈머 스레드 하나가 순서대로 처리한다는 전제에 기대므로 suspend 함수로 바꾸지 않는다.
+- `JdbcTemplate.update`에 바인딩을 넘길 때는 `PreparedStatementSetter { }`를 명시한다. 람다만 넘기면 `update(String, vararg Any?)`가 골라질 수 있다.
+- 의도된 광범위 catch처럼 detekt 규칙을 어기는 곳은 `@Suppress("규칙")`에 이유 주석을 붙인다.
 
 ## Lombok 사용 패턴
 

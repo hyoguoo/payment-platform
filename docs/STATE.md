@@ -15,7 +15,7 @@
 
 ## 최근 완료
 
+- **KOTLIN-PILOT-PRODUCT** (2026-11-23) — [완료 요약](archive/kotlin-pilot-product/BRIEF.md#완료-요약)
 - **PAYMENT-THROUGHPUT** (2026-11-16) — [완료 요약](archive/payment-throughput/BRIEF.md#완료-요약)
-- **AGENT-STRUCTURE-OVERHAUL** (2026-11-06) — [완료 요약](archive/agent-structure-overhaul/BRIEF.md#완료-요약)
 
 전체 이력: `docs/archive/README.md` / 구 STATE 이력: `docs/archive/state-history-2026H1.md`
